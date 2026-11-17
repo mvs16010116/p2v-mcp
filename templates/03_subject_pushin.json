@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "template_id": "03_subject_pushin",
+  "name": "主体推近锁定",
+  "summary": "群像中用真实 RT-DETR bbox 锁定红夹克人物，upper_body 派生后推近居中。",
+  "effect_summary": "focus=index(1) + bbox[0.4096,0.1462,0.6053,0.9984] + upper_body，fill=0.62/contain；mask=ellipse；impact=subtle。",
+  "use_cases": ["群像焦点突出", "人物特写卡点", "商品主角锁定"],
+  "maturity": "landed",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 4,
+    "beat_interval_hint_sec": 2.0,
+    "rhythm_note": "少切镜给足推近与停留时间；bbox 来自 fixtures/reports/detection_report.json"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg"],
+    "texts": ["10 人中锁定 1 人", "主体推近实证", "红夹克居中放大"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "ellipse", "duration": 0.32, "ease": "spring"},
+        "image_spring": {"stiffness": 160, "damping": 22, "mass": 1.0},
+        "text_anim": {"type": "spring-up-fade", "stiffness": 220, "damping": 20, "delay": 0.08, "y_offset": 60.0, "stroke": false, "shadow": false},
+        "kenburns": {"enable": false, "start_scale": 1.0, "end_scale": 1.15, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "none", "pivot_x": "50%", "pivot_y": "35%"},
+        "focus": {
+          "mode": "subject",
+          "selector": {"type": "index", "value": 1},
+          "subject_index": 1,
+          "bbox": [0.4096, 0.1462, 0.6053, 0.9984],
+          "fill": 0.62,
+          "fit": "contain",
+          "anchor_region": "upper_body",
+          "hold_ratio": 0.25,
+          "parallax": {"enable": false, "bg_ratio": 0.35, "haze": 0.15},
+          "tour_to": null
+        },
+        "beat_impacts": [],
+        "cinematic_fx": null
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "subtle", "style_preset": "standard", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "稳态段 scale≈1.188 真推近、红夹克居中误差 0、contain 不切头；focus_render 真进成片。"
+}

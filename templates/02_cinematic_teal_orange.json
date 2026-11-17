@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "template_id": "02_cinematic_teal_orange",
+  "name": "电影感青橙",
+  "summary": "不规则裁切 + 闪入过曝 + 青橙调色，轻松得到电影预告片质感。",
+  "effect_summary": "mask.mode=irregular；reveal=flash-in(14px/2.4x/1.12)；grade=teal-orange；impact=aggressive；style=cinematic。",
+  "use_cases": ["电影预告", "产品发布预告", "氛围感图文卡点"],
+  "maturity": "landed",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 4,
+    "beat_interval_hint_sec": 2.0,
+    "rhythm_note": "少切镜给足入场与稳态时间；强拍触发闪入"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg"],
+    "texts": ["电影感 · 青橙调色", "不规则裁切揭示", "闪入过曝"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "circle", "duration": 0.32, "ease": "spring"},
+        "image_spring": {"stiffness": 240, "damping": 17, "mass": 1.0},
+        "text_anim": {"type": "spring-up-fade", "stiffness": 220, "damping": 20, "delay": 0.08, "y_offset": 60.0, "stroke": false, "shadow": true},
+        "kenburns": {"enable": false, "start_scale": 1.0, "end_scale": 1.15, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "none", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [],
+        "cinematic_fx": {
+          "mask": {"mode": "irregular", "duration": 0.38, "seed_from": "clip.index"},
+          "shatter": {"cols": 6, "rows": 6, "stagger": 0.018},
+          "reveal": {"type": "flash-in", "blur_px": 14.0, "brightness": 2.4, "overshoot": 1.12, "duration": 0.22, "ghosts": 3},
+          "backdrop": {"type": "blur", "blur_px": 24.0, "brightness": 0.5},
+          "grade": {"preset": "teal-orange", "grain_png": null, "vignette": 0.0},
+          "light": {"sweep": false, "flare_at_beat": [], "flare_asset": null}
+        }
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "aggressive", "style_preset": "cinematic", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "斜切不规则轮廓揭示 + 入场帧过曝 + 稳态青橙分色；irregular/flash-in/grade 均已真进成片。"
+}

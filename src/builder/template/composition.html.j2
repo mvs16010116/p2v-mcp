@@ -1,0 +1,826 @@
+{#
+  HyperFrames 确定性合成模板（方案 8.2 + 18.1/18.2 + 第 21 章硬契约）。
+  铁律：单条 MASTER 时间线、paused、只用 totalTime(t,false) 驱动；禁 repeat/yoyo；
+  clip-path 插值满足「同函数/同点数/同单位/同顺序 + fromTo 显式两端」。
+  已实现：mask/image_spring/text_anim（含 per-char 逐字）/kenburns，
+  beat_impacts 的 flash/punch/shake/chromatic 四型，
+  19 章特效子集（irregular 裁切 / flash-in 闪入 / grade 调色 / 19.3 碎裂炸现），
+  以及 18.3 crossfade 交叉溶解 + 19.5 扫光 / 预渲染颗粒 overlay 层。
+  focus 稳态推近见 focus_render；镜头光晕 flare 仍保留为 DOM 钩子。
+  polygon 插值由 irregularPolygon() 固定 12 顶点 / 全百分比 / 同序保证「四同」。
+#}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>{{ composition_id }}</title>
+<style>
+  html, body { margin:0; padding:0; background:#000; overflow:hidden; }
+  #stage {
+    position:relative; width:{{ width }}px; height:{{ height }}px;
+    overflow:hidden; transform-origin:50% 50%;
+  }
+  #flash-layer {
+    position:absolute; inset:0; background:#fff; opacity:0;
+    pointer-events:none; mix-blend-mode:screen; z-index:70;
+  }
+  #bg-layer {
+    position:absolute; inset:0;
+    background-image:url('{{ bg_image }}');
+    background-size:cover; background-position:center;
+    filter:blur(28px) brightness(.35);
+    transform:scale(1.08);
+  }
+  /* 19.5 扫光：独立 overlay DOM，xPercent -120→120，mix-blend-mode:overlay。
+     不挂在 img 上，避免抢 img 的 transform/filter。 */
+  #sweep-layer { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:40; }
+  #sweep-bar {
+    position:absolute; top:-50%; left:-50%; width:200%; height:200%;
+    background:linear-gradient(105deg, transparent 40%, rgba(255,255,255,.45) 50%, transparent 60%);
+    mix-blend-mode:overlay; opacity:0; will-change:transform,opacity;
+  }
+  /* 19.5 预渲染颗粒：静态 PNG 平铺 + opacity 轻微呼吸，禁逐帧生成噪声（性能红线）。 */
+  #grain-layer {
+    position:absolute; inset:0; pointer-events:none; z-index:60;
+    background-repeat:repeat; mix-blend-mode:overlay; opacity:0;
+  }
+  /* 阶段 C WebGL 增强层：独立 canvas，z 介于 grain(60) 与 flash(70) 之间。
+     只做 additive 叠加，绝不挂在 img/stage 上，避免抢 transform/filter。
+     getContext 探测失败或全局关闭时由 JS 设 display:none + no-op，不阻断出片。 */
+  #webgl-layer {
+    position:absolute; inset:0; width:100%; height:100%;
+    pointer-events:none; z-index:65; mix-blend-mode:screen;
+  }
+  .clip { position:absolute; inset:0; display:none; }
+  /* 20.5 分层视差：per-clip 独立模糊背景层；前景 focus 全速推近时背景慢推 + 雾化。
+     per-clip 独立 DOM 避免全屏 bg-layer 被多镜争抢，保证确定性 seek。 */
+  .bg-parallax {
+    position:absolute; inset:0; z-index:0; pointer-events:none;
+    background-size:cover; background-position:center;
+    filter:blur(24px) brightness(.55);
+    transform:scale(1.06);
+  }
+  .clip img {
+    position:relative; z-index:1;
+    width:100%; height:100%; object-fit:cover;
+    will-change: transform, clip-path, opacity;
+  }
+  /* 19.3 碎裂炸现：每片显示原图的一块（CSS 雪碧图），从偏移位置错峰飞入就位。
+     独立 DOM z=1（img 之上、caption 之下），不抢 img/caption 的 transform。 */
+  .shatter-layer { position:absolute; inset:0; z-index:1; pointer-events:none; opacity:0; }
+  .shard {
+    position:absolute; background-repeat:no-repeat;
+    will-change: transform, opacity;
+  }
+  .caption {
+    position:absolute; z-index:2; left:0; right:0; bottom:{{ text_bottom }}px;
+    text-align:center; font-size:{{ text_size }}px; color:#fff;
+    font-family: "{{ font_family }}", sans-serif;
+    text-shadow: 0 2px 12px rgba(0,0,0,.7);
+    will-change: transform, opacity;
+  }
+</style>
+</head>
+<body>
+<div id="stage" data-composition-id="{{ composition_id }}"
+     data-width="{{ width }}" data-height="{{ height }}"
+     data-fps="{{ fps }}" data-duration="{{ total_duration }}">
+{% if bg_image %}<div id="bg-layer"></div>{% endif %}
+{% for clip in clips %}
+  <div class="clip" id="clip-{{ clip.index }}"
+       data-index="{{ clip.index }}"
+       data-cinematic-mode="{{ clip.cinematic_mode }}"
+       data-focus-mode="{{ clip.focus_mode }}"
+       data-text-anim-type="{{ clip.text_anim_type }}">
+    {% if clip.focus_render.parallax %}<div class="bg-parallax" style="background-image:url('{{ clip.image }}')"></div>{% endif %}
+    <img src="{{ clip.image }}" alt=""
+         style="transform-origin:{{ clip.pivot_x }} {{ clip.pivot_y }}">
+    {% if clip.cinematic.shatter_enable %}<div class="shatter-layer" data-cols="{{ clip.cinematic.shatter_cols }}" data-rows="{{ clip.cinematic.shatter_rows }}" data-image="{{ clip.image }}" data-stagger="{{ clip.cinematic.shatter_stagger }}"></div>{% endif %}
+    <div class="caption">{{ clip.text }}</div>
+  </div>
+{% endfor %}
+  <div id="sweep-layer"><div id="sweep-bar"></div></div>
+  {% if grain_image %}<div id="grain-layer" style="background-image:url('{{ grain_image }}')"></div>{% endif %}
+  <canvas id="webgl-layer" width="{{ width }}" height="{{ height }}"></canvas>
+  <div id="flash-layer"></div>
+</div>
+
+<script src="./vendor/gsap.min.js"></script>
+<script src="./vendor/CustomEase.min.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+ * spring.js 内联实现（方案 18.1）。避免额外依赖 vendor 中的第三方二进制；
+ * 只依赖 gsap.min.js + CustomEase.min.js，许可见 vendor/README.md。
+ * ------------------------------------------------------------------------- */
+(function (global) {
+  const cache = new Map();
+
+  function springPath(k, c, m, samples) {
+    const w0 = Math.sqrt(k / m);
+    const zeta = c / (2 * Math.sqrt(k * m));
+    const wd = w0 * Math.sqrt(Math.abs(1 - zeta * zeta));
+    const n = samples || 64;
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const u = i / n;
+      let v;
+      if (zeta < 0.999) {
+        v = 1 - Math.exp(-zeta * w0 * u) *
+              (Math.cos(wd * u) + (zeta * w0 / wd) * Math.sin(wd * u));
+      } else {
+        v = 1 - (1 + w0 * u) * Math.exp(-w0 * u);
+      }
+      pts.push([u, v]);
+    }
+    let d = `M${pts[0][0].toFixed(5)},${pts[0][1].toFixed(5)}`;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[i];
+      const p2 = pts[i + 1],             p3 = pts[Math.min(n, i + 2)];
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+      const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+      const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ` C${c1x.toFixed(5)},${c1y.toFixed(5)} ${c2x.toFixed(5)},${c2y.toFixed(5)} ${p2[0].toFixed(5)},${p2[1].toFixed(5)}`;
+    }
+    return d;
+  }
+
+  global.makeSpringEase = function (stiffness, damping, mass) {
+    const k = stiffness || 240, c = damping || 17, m = mass || 1;
+    const id = `${k}_${c}_${m}`;
+    if (!cache.has(id)) {
+      if (typeof CustomEase === 'undefined') {
+        throw new Error('CustomEase 未加载：请检查 vendor/CustomEase.min.js');
+      }
+      gsap.registerPlugin(CustomEase);
+      const name = 'spring_' + id.replace(/\./g, '_');
+      CustomEase.create(name, springPath(k, c, m));
+      cache.set(id, name);
+    }
+    return cache.get(id);
+  };
+})(window);
+
+/* ---------------------------------------------------------------------------
+ * 时间线与确定性 seek 契约（决策 #3 / #6 / 第 21 章）
+ * ------------------------------------------------------------------------- */
+const TIMELINE = {{ timeline_json | safe }};
+const FPS = {{ fps }};
+const TOTAL_DURATION = {{ total_duration }};
+const IMPACT_PROFILE = {{ impact_profile | tojson }};
+/* 18.3 crossfade 与 19.5 光效/颗粒：全部来自 timeline_json，缺配置时保持旧行为。 */
+const XFADE = TIMELINE.crossfade || { enable: false, duration: 0.12 };
+const FX_OV = TIMELINE.fx_overlay || { sweep: false, sweep_duration: 0.55, grain_image: '' };
+/* 阶段 C WebGL：默认关闭；缺配置时 canvas 隐藏 + no-op，绝不阻断出片。 */
+const WEBGL = TIMELINE.webgl || { enabled: false, seed: 20261117, particle_count: 220,
+                                  godray_intensity: 0.18, sharpen_strength: 0.0 };
+const MASTER = gsap.timeline({ paused: true });
+
+/* 默认空实现：任何调用路径都安全；探测成功后 installWebGL() 才覆盖 renderShaderFrame。 */
+window.renderShaderFrame = function () {};
+let shaderReady = function () { return Promise.resolve(); };
+
+/* HyperFrames 约定：__timelines 必须在字体 ready 回调内、tween 全部建好之后注册，
+   否则 readiness gate 会把「key 已存在」误判为 ready，渲染出空白帧。见 markReady()。 */
+
+/* 帧量化：t 先 round 到帧边界，避免浮点误差产生相邻帧像素差异（21.1 C1）。 */
+function quantize(t) {
+  return Math.round(t * FPS) / FPS;
+}
+
+window.renderAtTime = (t) => {
+  MASTER.totalTime(quantize(t), false);   /* 禁用 time() / repeat / yoyo */
+  window.renderShaderFrame(quantize(t));  /* 与 MASTER 同一量化函数；纯 t 函数，可乱序 seek */
+};
+window.renderAtFrame = (f) => {
+  window.renderAtTime(f / FPS);  /* 保持原样：单一入口，不重复量化 */
+};
+window.__hf = {
+  duration: TOTAL_DURATION,
+  seek: (t) => window.renderAtTime(t)
+};
+
+/* ---------------------------------------------------------------------------
+ * 蒙版：所有 clip-path 字符串统一用百分比、同结构、同点数（决策 #7「四同」），
+ * 且入场/退场都用 fromTo 显式写死两端，不依赖 computed style。
+ * ------------------------------------------------------------------------- */
+function maskStart(type) {
+  switch (type) {
+    case 'circle':          return 'circle(0% at center)';
+    case 'ellipse':         return 'ellipse(0% 0% at center)';
+    case 'inset-rounded':   return 'inset(50% round 40px)';
+    case 'horizontal-wipe': return 'inset(0% 100% 0% 0%)';
+    case 'vertical-wipe':   return 'inset(100% 0% 0% 0%)';
+    default:                return 'inset(0% 100% 0% 0%)';
+  }
+}
+function maskEnd(type) {
+  switch (type) {
+    case 'circle':          return 'circle(100% at center)';
+    case 'ellipse':         return 'ellipse(100% 100% at center)';
+    case 'inset-rounded':   return 'inset(0% round 40px)';
+    case 'horizontal-wipe': return 'inset(0% 0% 0% 0%)';
+    case 'vertical-wipe':   return 'inset(0% 0% 0% 0%)';
+    default:                return 'inset(0% 0% 0% 0%)';
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 19.2 不规则裁切：固定 12 顶点 / 全百分比 / 同函数 / 同顺序（决策 #7 四同）。
+ * seed 为整数（来自 clip.index），sin 扰动确定性：无 Date.now、无未 seed 随机。
+ * ------------------------------------------------------------------------- */
+const IRREGULAR_POINTS = 12;
+function irregularPolygon(p, seed) {
+  const pts = [];
+  const grow = Math.min(1, p * 1.45);   // 略过冲到画面外，避免边缘露缝
+  for (let i = 0; i < IRREGULAR_POINTS; i++) {
+    const a = (i / IRREGULAR_POINTS) * Math.PI * 2;
+    const jitter = 0.78 + 0.22 * Math.sin(seed * 13.7 + i * 7.3);
+    const r = grow * jitter * 68;
+    const x = (50 + Math.cos(a) * r).toFixed(2) + '%';
+    const y = (50 + Math.sin(a) * r).toFixed(2) + '%';
+    pts.push(x + ' ' + y);
+  }
+  return 'polygon(' + pts.join(',') + ')';
+}
+
+/* 19.5 调色预设：作用在 stage 容器，与 img 上的 flash-in filter 互不覆盖。 */
+const GRADE_FILTERS = {
+  none: 'none',
+  film: 'contrast(1.08) saturate(0.90) sepia(0.12)',
+  'teal-orange': 'contrast(1.10) saturate(1.15) hue-rotate(-8deg)',
+  noir: 'grayscale(1) contrast(1.25) brightness(0.95)'
+};
+
+/* 19.3 碎裂炸现：用整数 seed 的确定性 LCG 生成每片偏移，绝不用未 seed 随机。
+   每片 fromTo 显式两端（偏移→0、opacity 0→1），错峰 stagger，全部挂 MASTER 单时钟。
+   碎片就位后整层淡出、img 接管稳态，避免两层长期叠加产生跳帧。 */
+function shatterRand(seed) {
+  let s = (seed >>> 0) || 1;
+  return function () {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+function buildShatter(clip, root, moveStart, Tin, stageW, stageH) {
+  const layer = root.querySelector('.shatter-layer');
+  if (!layer) return null;
+  const cols = Math.max(1, Math.min(6, Number(layer.dataset.cols) || 6));
+  const rows = Math.max(1, Math.min(6, Number(layer.dataset.rows) || 6));
+  const stagger = Math.max(0, Number(layer.dataset.stagger) || 0.018);
+  const imgUrl = layer.dataset.image;
+  const seed = Number.isFinite(clip.cinematic.mask_seed) ? clip.cinematic.mask_seed : clip.index;
+  const rnd = shatterRand(seed);
+  layer.style.backgroundImage = "url('" + imgUrl + "')";
+  layer.style.opacity = '1';   /* 入场期可见；settle 后由 MASTER tween 淡出 */
+  const total = cols * rows;
+  const shards = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const d = document.createElement('div');
+      d.className = 'shard';
+      d.style.left = (c * 100 / cols) + '%';
+      d.style.top = (r * 100 / rows) + '%';
+      d.style.width = (100 / cols) + '%';
+      d.style.height = (100 / rows) + '%';
+      d.style.backgroundImage = "url('" + imgUrl + "')";
+      d.style.backgroundSize = (cols * 100) + '% ' + (rows * 100) + '%';
+      d.style.backgroundPosition =
+        (cols > 1 ? (c * 100 / (cols - 1)) : 0) + '% ' +
+        (rows > 1 ? (r * 100 / (rows - 1)) : 0) + '%';
+      layer.appendChild(d);
+      /* 偏移方向由 seed 决定且纯函数可复算：±(0.3~0.9) 画幅，带轻微旋转。 */
+      const dx = (rnd() - 0.5) * stageW * 1.4;
+      const dy = (rnd() - 0.5) * stageH * 1.4;
+      const rot = (rnd() - 0.5) * 40;
+      shards.push({ el: d, dx: dx, dy: dy, rot: rot });
+    }
+  }
+  const flyDur = Math.max(0.15, Tin);
+  shards.forEach((s, i) => {
+    const at = moveStart + i * stagger;
+    MASTER.fromTo(s.el,
+      { x: s.dx, y: s.dy, rotation: s.rot, opacity: 0, scale: 0.6 },
+      { x: 0, y: 0, rotation: 0, opacity: 1, scale: 1,
+        duration: flyDur, ease: 'power3.out', immediateRender: false }, at);
+  });
+  /* 碎片就位后整层淡出；交接给 img（img 在入场期 opacity 0，此处同步淡入）。 */
+  const settle = moveStart + (total - 1) * stagger + flyDur;
+  MASTER.fromTo(layer, { opacity: 1 },
+    { opacity: 0, duration: 0.18, ease: 'none', immediateRender: false }, settle);
+  return { settle: settle };
+}
+
+function buildClip(clip, stage) {
+  const root = document.getElementById('clip-' + clip.index);
+  const img  = root.querySelector('img');
+  const cap  = root.querySelector('.caption');
+  const fx   = clip.cinematic || {};
+  const irregular = fx.mask_mode === 'irregular';
+  const flashIn = fx.reveal_type === 'flash-in';
+  const seed  = Number.isFinite(fx.mask_seed) ? fx.mask_seed : clip.index;
+  const T    = clip.duration;
+
+  /* 18.3 crossfade：T_cross 落在 0.08–0.15s 并受 clip 时长二次约束；首镜无前驱不提前。
+     moveStart 是新镜「提前入场头部」的起点，旧镜退到 clip.end 才隐藏，二者在重叠段共存。 */
+  const xfOn = !!(XFADE.enable && fx.crossfade_enable && TIMELINE.clips.length > 1);
+  const Tc = xfOn ? Math.max(0.08, Math.min(Number(XFADE.duration) || 0.12, 0.15, T * 0.25)) : 0;
+  const hasPrev = clip.index > 0;
+  const hasNext = clip.index < TIMELINE.clips.length - 1;
+  const moveStart = (xfOn && hasPrev) ? clip.start - Tc : clip.start;
+
+  /* 20.5 分层视差：背景层贯穿整镜慢速推近 + 雾化（前景 focus 全速聚焦）。
+     per-clip 独立 DOM 避免多镜争抢；fromTo 显式两端 + 单时钟 + 帧量化，可乱序 seek。
+     放大余量 max(scale,1.15) 防止背景平移露出黑边。 */
+  const bgPar = root.querySelector('.bg-parallax');
+  const px = (clip.focus_render && clip.focus_render.parallax) || null;
+  if (bgPar && px) {
+    const bg = px.background || {};
+    const haze = Math.max(0, Number(px.haze) || 0);
+    const endScale = Math.max(Number(bg.scale) || 1, 1.15);
+    const baseBlur = 24;
+    const endBlur = baseBlur + haze * 24;
+    MASTER.fromTo(bgPar,
+      { scale: 1.06, x: 0, y: 0, filter: 'blur(' + baseBlur + 'px) brightness(.55)' },
+      { scale: endScale, x: Number(bg.x) || 0, y: Number(bg.y) || 0,
+        filter: 'blur(' + endBlur.toFixed(1) + 'px) brightness(.55)',
+        duration: Math.max(0, clip.end - moveStart), ease: 'none', immediateRender: false },
+      moveStart);
+  }
+
+  /* 19.5 调色：每个镜头起点 set 一次 stage filter（set 无 duration，seek 安全）。 */
+  MASTER.set(stage, { filter: GRADE_FILTERS[fx.grade_preset] || GRADE_FILTERS.none }, clip.start);
+  const Tin  = Math.min(clip.mask.duration, T * 0.5);
+  const Tout = Math.min(clip.mask.duration, T * 0.5);
+  const spring = makeSpringEase(clip.image_spring.stiffness,
+                                clip.image_spring.damping,
+                                clip.image_spring.mass);
+  let maskStartStr = maskStart(clip.mask.type);
+  let maskEndStr   = maskEnd(clip.mask.type);
+  if (irregular) {
+    /* 显式两端：同一 polygon 函数 / 12 顶点 / 全 % / 同顺序（决策 #7 四同）。 */
+    maskStartStr = irregularPolygon(0, seed);
+    maskEndStr   = irregularPolygon(1, seed);
+  }
+
+  /* 0：镜头可见窗口（set 不是 tween，无 repeat/yoyo）。
+     crossfade：新镜提前 Tc 显示、退场尾部与下一镜重叠；zIndex 让新镜盖在旧镜之上。 */
+  MASTER.set(root, { display: 'block' }, moveStart)
+        .set(root, { display: 'none'  }, clip.end);
+  if (xfOn && hasPrev) {
+    root.style.zIndex = String(clip.index + 1);
+    MASTER.fromTo(root, { opacity: 0 },
+      { opacity: 1, duration: Tc, ease: 'none', immediateRender: false }, moveStart);
+    MASTER.set(cap, { opacity: 0 }, moveStart);  /* 提前显示时不露出字幕 */
+  }
+  if (xfOn && hasNext) {
+    MASTER.fromTo(root, { opacity: 1 },
+      { opacity: 0, duration: Tc, ease: 'none', immediateRender: false }, clip.end - Tc);
+  }
+
+  /* 19.3 碎裂炸现：碎片层叠在 img 之上飞入拼合，就位后淡出露出 img 稳态。
+     img 入场 tween 保持不变（碎片层只叠加、不替换），故不破坏 focus/Ken Burns。 */
+  if (fx.shatter_enable) {
+    const sw = Number(stage.dataset.width) || 1080;
+    const sh = Number(stage.dataset.height) || 1920;
+    buildShatter(clip, root, moveStart, Tin, sw, sh);
+  }
+
+  /* 1：入场 —— 蒙版展开 + 弹簧缩放，同一 ease / 同一时长（四同 + 显式两端）。
+     flash-in 的 scale 起点并入此处，避免两个 tween 抢 transform。 */
+  const enterScale = flashIn ? Number(fx.reveal_overshoot) : 0.75;
+  if (irregular) {
+    img.style.clipPath = maskStartStr;
+    MASTER.fromTo(img,
+      { scale: enterScale, opacity: 0 },
+      { scale: 1, opacity: 1, duration: Tin, ease: spring, immediateRender: false },
+      moveStart);
+    /* proxy tween：p 0→1 显式两端，每帧重算完整 polygon 写回 clipPath。
+       与 scale/opacity 分离，确定性可乱序 seek。 */
+    const pEnter = { p: 0 };
+    MASTER.fromTo(pEnter, { p: 0 }, {
+      p: 1, duration: Tin, ease: spring, immediateRender: false,
+      onUpdate: () => { img.style.clipPath = irregularPolygon(pEnter.p, seed); }
+    }, moveStart);
+  } else {
+    MASTER.fromTo(img,
+      { clipPath: maskStartStr, scale: enterScale, opacity: 0 },
+      { clipPath: maskEndStr,   scale: 1,          opacity: 1,
+        duration: Tin, ease: spring, immediateRender: false },
+      moveStart);
+  }
+
+  /* 1b：19.4 闪入 —— filter 动画（blur + brightness）与 transform 解耦。 */
+  if (flashIn) {
+    MASTER.fromTo(img,
+      { filter: 'blur(' + Number(fx.reveal_blur_px) + 'px) brightness(' + Number(fx.reveal_brightness) + ')' },
+      { filter: 'blur(0px) brightness(1)', duration: Number(fx.reveal_duration),
+        ease: 'power4.out', immediateRender: false },
+      moveStart);
+  }
+
+  /* 2：稳态 —— focus 推近优先（主体锁定到成片，方案 20.4/20.6），
+        否则回退 Ken Burns。focus 的 x/y 是像素、锚点 50% 50%（与 bboxToFocus 一致）。 */
+  const shift = clip.start - moveStart;  /* crossfade 提前量；无 crossfade 时为 0 */
+  const steadyDur = Math.max(0, T + shift - Tin - Tout);
+  if (clip.focus_render && clip.focus_render.enable) {
+    const fr = clip.focus_render;
+    const tour = fr.tour_keyframes;
+    const moveDur = steadyDur * (1 - fr.hold_ratio);
+    if (tour && tour.length === 2) {
+      /* 20.5 多主体漫游：满幅→A（与原单点聚焦同语义），再 A→B 游走。
+         两段都 fromTo 显式两端，保证可乱序 seek；退场起点取 B（见 steadyEndScale）。 */
+      const a = tour[0], b = tour[1];
+      MASTER.fromTo(img,
+        { scale: 1, x: 0, y: 0 },
+        { scale: a.scale, x: a.x, y: a.y,
+          duration: moveDur * 0.5, ease: 'power2.inOut', immediateRender: false },
+        moveStart + Tin);
+      MASTER.fromTo(img,
+        { scale: a.scale, x: a.x, y: a.y },
+        { scale: b.scale, x: b.x, y: b.y,
+          duration: moveDur * 0.5, ease: 'power2.inOut', immediateRender: false },
+        moveStart + Tin + moveDur * 0.5);
+    } else {
+      MASTER.fromTo(img,
+        { scale: 1, x: 0, y: 0 },
+        { scale: fr.scale, x: fr.x, y: fr.y,
+          duration: moveDur, ease: 'power2.inOut', immediateRender: false },
+        moveStart + Tin);
+    }
+  } else if (clip.kenburns && clip.kenburns.enable) {
+    MASTER.fromTo(img,
+      { scale: clip.kenburns.start_scale,
+        xPercent: clip.kenburns.start_x, yPercent: clip.kenburns.start_y },
+      { scale: clip.kenburns.end_scale,
+        xPercent: clip.kenburns.end_x, yPercent: clip.kenburns.end_y,
+        duration: steadyDur,
+        ease: clip.kenburns.ease || 'none', immediateRender: false },
+      moveStart + Tin);
+  }
+
+  /* 3：退场 —— 反向蒙版收缩；起点须接住稳态结束 scale，避免 focus 推近后跳帧。
+     fromTo 显式两端，保证可 seek、可乱序。 */
+  const tourEnd = (clip.focus_render && clip.focus_render.tour_keyframes
+                   && clip.focus_render.tour_keyframes.length === 2)
+    ? clip.focus_render.tour_keyframes[1].scale : null;
+  const steadyEndScale = (clip.focus_render && clip.focus_render.enable)
+    ? (tourEnd !== null ? tourEnd : clip.focus_render.scale)
+    : ((clip.kenburns && clip.kenburns.enable) ? clip.kenburns.end_scale : 1);
+  if (irregular) {
+    const pExit = { p: 1 };
+    /* crossfade 的退场由 root.opacity 溶解承担：保留满幅画面，不做蒙版收缩，
+       否则旧镜提前收缩露出背景层，跨镜重叠就退化成"淡出到模糊底"。 */
+    if (!(xfOn && hasNext)) {
+      MASTER.fromTo(pExit, { p: 1 }, {
+        p: 0, duration: Tout, ease: spring, immediateRender: false,
+        onUpdate: () => { img.style.clipPath = irregularPolygon(pExit.p, seed); }
+      }, clip.end - Tout);
+      MASTER.fromTo(img,
+        { scale: steadyEndScale, opacity: 1 },
+        { scale: steadyEndScale * 0.85, opacity: 0,
+          duration: Tout, ease: spring, immediateRender: false },
+        clip.end - Tout);
+    }
+  } else if (!(xfOn && hasNext)) {
+    MASTER.fromTo(img,
+      { clipPath: maskEndStr, scale: steadyEndScale, opacity: 1 },
+      { clipPath: maskStartStr, scale: steadyEndScale * 0.85, opacity: 0,
+        duration: Tout, ease: spring, immediateRender: false },
+      clip.end - Tout);
+  }
+
+  /* 4：文字：spring-up-fade / spring-scale / fade-in / per-char 全部真实现。
+       per-char 把字幕逐字拆成 <span>，按固定间隔错峰淡入上浮（纯 t 函数，可乱序 seek）。 */
+  const tEase = makeSpringEase(clip.text_anim.stiffness,
+                               clip.text_anim.damping, 1);
+  const tStart = clip.start + clip.text_anim.delay;
+  if (clip.text_anim.type === 'per-char') {
+    const txt = cap.textContent || '';
+    const chars = Array.from(txt);
+    if (chars.length) {
+      cap.textContent = '';
+      const perChar = Math.max(0.06, Tin / Math.max(1, chars.length));
+      const spans = chars.map((ch) => {
+        const sp = document.createElement('span');
+        sp.textContent = ch;
+        sp.style.display = 'inline-block';
+        sp.style.whiteSpace = 'pre';
+        cap.appendChild(sp);
+        return sp;
+      });
+      spans.forEach((sp, i) => {
+        MASTER.fromTo(sp, { opacity: 0, y: clip.text_anim.y_offset * 0.5 },
+          { opacity: 1, y: 0, duration: Tin, ease: tEase, immediateRender: false },
+          tStart + i * perChar);
+      });
+    } else {
+      MASTER.fromTo(cap, { opacity: 0 }, { opacity: 1, duration: Tin, immediateRender: false }, tStart);
+    }
+  } else if (clip.text_anim.type === 'fade-in') {
+    MASTER.fromTo(cap, { opacity: 0, y: 0 },
+      { opacity: 1, y: 0, duration: Tin, ease: 'none', immediateRender: false }, tStart);
+  } else if (clip.text_anim.type === 'spring-scale') {
+    MASTER.fromTo(cap, { opacity: 0, scale: 0.85 },
+      { opacity: 1, scale: 1, duration: Tin, ease: tEase, immediateRender: false }, tStart);
+  } else {
+    MASTER.fromTo(cap, { opacity: 0, y: clip.text_anim.y_offset },
+      { opacity: 1, y: 0, duration: Tin, ease: tEase, immediateRender: false }, tStart);
+  }
+  MASTER.to(cap, { opacity: 0, duration: Tout, ease: 'power2.in' }, clip.end - Tout);
+}
+
+/* ---------------------------------------------------------------------------
+ * 节拍冲击（方案 18.2）：flash 独立图层 / punch stage.scale / shake stage.x,y /
+ * chromatic caption.textShadow。均用 fromTo 显式两端 + MASTER 单时钟，可乱序 seek；
+ * 四种冲击同一 beat 互斥，且各用不同 transform 分量，不与入场 spring/focus 抢属性。
+ * ------------------------------------------------------------------------- */
+function buildImpacts(impacts, stage) {
+  const flash = document.getElementById('flash-layer');
+  const GAIN = { off: 0, subtle: 0.5, normal: 1.0, aggressive: 1.6 }[IMPACT_PROFILE] || 1;
+  if (!impacts || !Array.isArray(impacts) || GAIN === 0) return;
+
+  impacts.forEach((hit) => {
+    const A = Math.min(hit.intensity * GAIN, 0.9);
+    const t = quantize(hit.frame / FPS);   /* 帧对齐，避开 beat 小数漂移 */
+    const d = hit.duration;
+
+    if (hit.type === 'flash') {
+      MASTER.fromTo(flash, { opacity: 0 },
+        { opacity: A, duration: d * 0.25, ease: 'power2.out', immediateRender: false }, t);
+      MASTER.fromTo(flash, { opacity: A },
+        { opacity: 0, duration: d * 0.75, ease: 'power2.in', immediateRender: false },
+        t + d * 0.25);
+    } else if (hit.type === 'punch') {
+      const peak = 1 + 0.05 * A;
+      MASTER.fromTo(stage, { scale: 1 },
+        { scale: peak, duration: d * 0.3, ease: 'power3.out', immediateRender: false }, t);
+      MASTER.fromTo(stage, { scale: peak },
+        { scale: 1, duration: d * 0.7,
+          ease: makeSpringEase(300, 14, 1), immediateRender: false }, t + d * 0.3);
+    } else if (hit.type === 'shake') {
+      /* 画面抖动：stage.x/y 交替位移，相位由 hit.frame 派生（确定性），段末归零。
+         用 x/y 分量，不与 punch 的 scale、grade 的 filter 抢属性。 */
+      const amp = 6 + 14 * A;
+      const seg = d / 4;
+      const phase = (hit.frame % 2) ? 1 : -1;
+      const seq = [[amp, -amp * 0.6], [-amp, amp * 0.5], [amp * 0.6, -amp], [-amp * 0.5, amp * 0.4]];
+      seq.forEach((xy, i) => {
+        MASTER.fromTo(stage, { x: xy[0] * phase, y: xy[1] * phase },
+          { x: 0, y: 0, duration: seg, ease: 'none', immediateRender: false }, t + i * seg);
+      });
+    } else if (hit.type === 'chromatic') {
+      /* 文字色差：proxy p 1→0，onUpdate 每帧写 caption.style.textShadow（红/青分离）。
+         用 proxy 数值 tween 而非 filter 字符串插值（后者在 headless 对 drop-shadow 支持不稳），
+         与 irregular polygon 同模式；p 显式两端、纯 t 函数、可乱序 seek。 */
+      const caps = Array.from(document.querySelectorAll('.clip .caption'));
+      const shift = 3 + 9 * A;
+      const cpProxy = { p: 1 };
+      caps.forEach((cp) => {
+        MASTER.fromTo(cpProxy, { p: 1 }, {
+          p: 0, duration: d, ease: 'power2.out', immediateRender: false,
+          onUpdate: () => {
+            const s = (shift * cpProxy.p).toFixed(2);
+            cp.style.textShadow = (-s) + 'px 0 rgba(255,0,0,.95), ' + s + 'px 0 rgba(0,255,255,.95), 0 2px 12px rgba(0,0,0,.7)';
+          }
+        }, t);
+      });
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------------
+ * 阶段 C WebGL 增强层（决策 #8）：真粒子 + 体积光，默认关闭。
+ * 确定性铁律：粒子位置 p0 + v0*t 闭式解（无帧间累积），PRNG 用整数 seed；
+ * uniform 只由 t + 生成期固化常量推导；无 rAF / Date.now / Math.random / fetch。
+ * headless 不可控 Chromium flag：getContext 或编译失败 → canvas 隐藏 + no-op，
+ * 绝不阻断出片，绝不成为默认质量路径（config.yaml fx.webgl.enabled=false）。
+ * ------------------------------------------------------------------------- */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function installWebGL() {
+  if (!WEBGL.enabled) return;   /* 全局默认关闭：保持 no-op，canvas 隐藏 */
+  const canvas = document.getElementById('webgl-layer');
+  if (!canvas) return;
+  function degrade() {
+    canvas.style.display = 'none';   /* 失败不留半透明黑层（首帧非黑是硬红线） */
+    /* window.renderShaderFrame 保持默认空函数；shaderReady 默认 resolve。 */
+  }
+  let gl = null;
+  try {
+    gl = canvas.getContext('webgl', { alpha: true, antialias: false, preserveDrawingBuffer: true })
+      || canvas.getContext('experimental-webgl', { alpha: true, antialias: false, preserveDrawingBuffer: true });
+  } catch (e) { degrade(); return; }
+  if (!gl) { degrade(); return; }   /* 探测失败：隐藏 + no-op，不阻断 */
+
+  const VS_PARTICLE = [
+    'attribute vec4 aP0V0;',           // x0,y0,vx,vy（NDC）
+    'attribute vec2 aMeta;',           // radius, alpha
+    'uniform float uT;',
+    'uniform float uHalfH;',           // 画面高宽比，修正点尺寸/位移各向异性
+    'varying float vAlpha;',
+    'void main() {',
+    '  vec2 pos = aP0V0.xy + aP0V0.zw * uT;',            // 闭式解：p0 + v0*t
+    '  pos = mod(pos + 1.0, 2.0) - 1.0;',                // wrap 到 [-1,1]（纯函数）
+    '  gl_Position = vec4(pos, 0.0, 1.0);',
+    '  gl_PointSize = aMeta.x * uHalfH;',
+    '  vAlpha = aMeta.y;',
+    '}',
+  ].join('\n');
+  const FS_PARTICLE = [
+    'precision mediump float;',
+    'varying float vAlpha;',
+    'void main() {',
+    '  vec2 d = gl_PointCoord - vec2(0.5);',
+    '  float r = length(d);',
+    '  float a = smoothstep(0.5, 0.0, r) * vAlpha;',     // 柔边圆点
+    '  gl_FragColor = vec4(vec3(1.0, 0.94, 0.78) * a, a);',
+    '}',
+  ].join('\n');
+  /* 体积光片元：光束角随 t 线性漂移、强度为 t 的纯函数，无随机无累积。 */
+  const FS_RAY_FINAL = [
+    'precision mediump float;',
+    'varying vec2 vUv;',
+    'uniform float uT;',
+    'uniform float uIntensity;',
+    'void main() {',
+    '  float angle = 1.1 + 0.15 * uT;',                  // 光束角 = a0 + w*t
+    '  float d = abs(atan(vUv.y, vUv.x) - angle);',
+    '  d = min(d, 6.2831853 - d);',
+    '  float ray = smoothstep(0.6, 0.0, d);',
+    '  float fall = pow(max(0.0, 1.0 - length(vUv)), 1.5);',
+    '  float pulse = 0.85 + 0.15 * sin(uT * 1.7);',      // 强度 = t 的纯函数
+    '  float a = ray * fall * uIntensity * pulse;',
+    '  gl_FragColor = vec4(vec3(1.0, 0.85, 0.6) * a, a);',
+    '}',
+  ].join('\n');
+  const VS_RAY_FINAL = [
+    'attribute vec2 aPos;',
+    'varying vec2 vUv;',
+    'void main() { vUv = aPos; gl_Position = vec4(aPos, 0.0, 1.0); }',
+  ].join('\n');
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { gl.deleteShader(s); return null; }
+    return s;
+  }
+  function program(vs, fs) {
+    const v = compile(gl.VERTEX_SHADER, vs), f = compile(gl.FRAGMENT_SHADER, fs);
+    if (!v || !f) return null;
+    const p = gl.createProgram();
+    gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return null;
+    return p;
+  }
+
+  const progP = program(VS_PARTICLE, FS_PARTICLE);
+  const progR = program(VS_RAY_FINAL, FS_RAY_FINAL);
+  if (!progP || !progR) { degrade(); return; }   /* 任一编译失败 → 降级 */
+
+  /* 粒子静态参数：整数 seed + mulberry32，初始化一次性生成，渲染期零随机。 */
+  const rnd = mulberry32(WEBGL.seed | 0);
+  const count = Math.max(1, Math.min(Number(WEBGL.particle_count) || 220, 2000));
+  const p0v0 = new Float32Array(count * 4);
+  const meta = new Float32Array(count * 2);
+  for (let i = 0; i < count; i++) {
+    p0v0[i * 4]     = rnd() * 2 - 1;          // x0
+    p0v0[i * 4 + 1] = rnd() * 2 - 1;          // y0
+    p0v0[i * 4 + 2] = (rnd() - 0.5) * 0.06;   // vx (NDC/s)
+    p0v0[i * 4 + 3] = -0.03 - rnd() * 0.08;   // vy：缓慢下沉（尘埃）
+    meta[i * 2]     = 2 + rnd() * 4;          // radius (px，乘 uHalfH 前的基础值)
+    meta[i * 2 + 1] = 0.10 + rnd() * 0.22;    // alpha
+  }
+  const bufP0 = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufP0);
+  gl.bufferData(gl.ARRAY_BUFFER, p0v0, gl.STATIC_DRAW);
+  const bufMeta = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufMeta);
+  gl.bufferData(gl.ARRAY_BUFFER, meta, gl.STATIC_DRAW);
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+  const aspect = canvas.height / canvas.width || 1;
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);   /* additive，配合 canvas 的 screen 混合 */
+  gl.clearColor(0, 0, 0, 0);
+
+  window.renderShaderFrame = function (qt) {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const t = Number(qt) || 0;
+    /* 体积光：全屏 quad。 */
+    gl.useProgram(progR);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    const aPosR = gl.getAttribLocation(progR, 'aPos');
+    gl.enableVertexAttribArray(aPosR);
+    gl.vertexAttribPointer(aPosR, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform1f(gl.getUniformLocation(progR, 'uT'), t);
+    gl.uniform1f(gl.getUniformLocation(progR, 'uIntensity'), Number(WEBGL.godray_intensity) || 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    /* 粒子：POINTS。 */
+    gl.useProgram(progP);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufP0);
+    const aP0 = gl.getAttribLocation(progP, 'aP0V0');
+    gl.enableVertexAttribArray(aP0);
+    gl.vertexAttribPointer(aP0, 4, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufMeta);
+    const aM = gl.getAttribLocation(progP, 'aMeta');
+    gl.enableVertexAttribArray(aM);
+    gl.vertexAttribPointer(aM, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform1f(gl.getUniformLocation(progP, 'uT'), t);
+    gl.uniform1f(gl.getUniformLocation(progP, 'uHalfH'), aspect);
+    gl.drawArrays(gl.POINTS, 0, count);
+  };
+  shaderReady = function () { return Promise.resolve(); };   /* 编译同步完成 */
+}
+
+/* ---------------------------------------------------------------------------
+ * 19.5 光效与颗粒层：独立 overlay DOM，不抢 img 的 transform/filter。
+ * - 扫光：倾斜白色渐变条 xPercent -120→120，mix-blend-mode:overlay，强拍触发；
+ * - 颗粒：预渲染静态 PNG 平铺，opacity 在 0.10↔0.14 轻微呼吸。
+ * 全部走 MASTER 单时钟 + 帧量化；无 repeat / yoyo / Date.now / 未 seed 随机。
+ * ------------------------------------------------------------------------- */
+function buildFxOverlays() {
+  const bar = document.getElementById('sweep-bar');
+  if (FX_OV.sweep && bar) {
+    const D = Math.max(0.2, Math.min(Number(FX_OV.sweep_duration) || 0.55, 1.0));
+    const strongBeats = (TIMELINE.beat_impacts || []).filter((h) => h.strong);
+    const triggers = strongBeats.length
+      ? strongBeats.map((h) => quantize(h.frame / FPS))
+      : TIMELINE.clips.slice(1).map((c) => quantize(c.start));
+    triggers.forEach((t) => {
+      /* 位移与透明度分离：位移线性扫过，透明度淡入—保持—淡出。 */
+      MASTER.fromTo(bar, { xPercent: -120 },
+        { xPercent: 120, duration: D, ease: 'none', immediateRender: false }, t);
+      MASTER.fromTo(bar, { opacity: 0 },
+        { opacity: 0.72, duration: D * 0.15, ease: 'none', immediateRender: false }, t);
+      MASTER.to(bar, { opacity: 0, duration: D * 0.3, ease: 'none' }, t + D * 0.7);
+    });
+  }
+  const grain = document.getElementById('grain-layer');
+  if (grain && FX_OV.grain_image) {
+    /* 呼吸用首尾相接的确定性 tween 段，禁 repeat/yoyo；末段按总时长截短。 */
+    const half = 0.75;
+    let t = 0;
+    while (t < TOTAL_DURATION) {
+      const end = Math.min(t + half * 2, TOTAL_DURATION);
+      const seg = end - t;
+      MASTER.fromTo(grain, { opacity: 0.10 },
+        { opacity: 0.14, duration: seg / 2, ease: 'sine.inOut', immediateRender: false }, t);
+      MASTER.to(grain, { opacity: 0.10, duration: seg / 2, ease: 'sine.inOut' }, t + seg / 2);
+      t = end;
+    }
+  }
+  installWebGL();   /* tween 全部建好后再装 WebGL（内部含探测/降级） */
+}
+
+const stageEl = document.getElementById('stage');
+TIMELINE.clips.forEach((clip) => buildClip(clip, stageEl));
+buildImpacts(TIMELINE.beat_impacts, stageEl);
+buildFxOverlays();
+
+/* ---------------------------------------------------------------------------
+ * ready gate（21.1 C2 / 21.2 坑 1、2）：字体与图片全部就绪后才置 __ready。
+ * 渲染侧必须用 beginFrame warmup 推进事件循环，不得用依赖 rAF 的 waitForFunction。
+ * ------------------------------------------------------------------------- */
+function markReady() {
+  const fontsReady = (document.fonts && document.fonts.ready)
+    ? document.fonts.ready : Promise.resolve();
+  const imagesReady = Promise.all(
+    Array.from(document.images).map((img) => {
+      if (img.complete) return Promise.resolve();
+      return new Promise((resolve) => {
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      });
+    })
+  );
+  /* WebGL shader 编译同步完成；纳入 gate 但不改变就绪语义，降级路径直接 resolve。 */
+  const shaderInit = imagesReady.then(() => shaderReady());
+  return Promise.all([fontsReady, imagesReady, shaderInit]).then(() => {
+    window.__timelines = window.__timelines || {};
+    window.__timelines[{{ composition_id | tojson }}] = MASTER;
+    if (typeof window.__hfForceTimelineRebind === 'function') {
+      window.__hfForceTimelineRebind();
+    }
+    window.__ready = true;
+    window.renderAtTime(0);
+  });
+}
+markReady();
+</script>
+</body>
+</html>

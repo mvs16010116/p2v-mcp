@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "template_id": "10_per_char_typography",
+  "name": "逐字排版冲击",
+  "summary": "逐字弹入字幕 + 色差冲击 + noir 高对比，适合强调文字的信息卡点。",
+  "effect_summary": "text=per-char（逐字错峰）；beat_impacts=chromatic；grade=noir；mask=irregular。",
+  "use_cases": ["金句卡点", "文字主导短片", "情绪向排版"],
+  "maturity": "landed",
+  "maturity_note": "per-char 逐字动画有真进成片证据（fixtures/e2e_fx_extended_render.py 结构 + span 拆分）；chromatic 代码已实现但像素证据未达标，按'未验证'标注。",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 4,
+    "beat_interval_hint_sec": 2.0,
+    "rhythm_note": "强拍处触发文字色差脉冲，配合逐字弹入形成排版冲击"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/person_ref.jpg"],
+    "texts": ["逐字弹入", "每个节拍都是重点", "黑白高对比"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "vertical-wipe", "duration": 0.34, "ease": "spring"},
+        "image_spring": {"stiffness": 260, "damping": 16, "mass": 1.0},
+        "text_anim": {"type": "per-char", "stiffness": 240, "damping": 18, "delay": 0.08, "y_offset": 60.0, "stroke": false, "shadow": true},
+        "kenburns": {"enable": true, "start_scale": 1.0, "end_scale": 1.1, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "power1.inOut", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [
+          {"t": 1.0, "frame": 30, "type": "chromatic", "intensity": 0.8, "duration": 0.35, "strong": true}
+        ],
+        "cinematic_fx": {
+          "mask": {"mode": "irregular", "duration": 0.34, "seed_from": "clip.index"},
+          "shatter": {"enable": false, "cols": 6, "rows": 6, "stagger": 0.018},
+          "reveal": {"type": "fade", "blur_px": 14.0, "brightness": 2.4, "overshoot": 1.12, "duration": 0.22, "ghosts": 3},
+          "backdrop": {"type": "blur", "blur_px": 24.0, "brightness": 0.5},
+          "grade": {"preset": "noir", "grain_png": null, "vignette": 0.25},
+          "light": {"sweep": false, "flare_at_beat": [], "flare_asset": null}
+        }
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "normal", "style_preset": "cinematic", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "字幕逐字错峰弹入、强拍处红青色差脉冲（代码实现）、noir 黑白高对比 + 暗角。"
+}

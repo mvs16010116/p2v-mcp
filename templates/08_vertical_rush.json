@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "template_id": "08_vertical_rush",
+  "name": "竖向快切冲击",
+  "summary": "竖向擦除 + bouncy 弹簧 + 强节拍冲击，适合高能混剪。",
+  "effect_summary": "mask=vertical-wipe/0.2；image_spring=bouncy(300/12)；text=spring-scale；impact=aggressive；style=aggressive。",
+  "use_cases": ["高能混剪", "运动/街舞", "快节奏种草"],
+  "maturity": "landed",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 1,
+    "beat_interval_hint_sec": 0.5,
+    "rhythm_note": "每拍换镜；mask.duration=0.2 是契约下限，保证 T≥2×T_in"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg", "fixtures/images/person_ref.jpg"],
+    "texts": ["快切 · 01", "快切 · 02", "强拍冲击"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "vertical-wipe", "duration": 0.2, "ease": "spring"},
+        "image_spring": {"stiffness": 300, "damping": 12, "mass": 1.0},
+        "text_anim": {"type": "spring-scale", "stiffness": 280, "damping": 14, "delay": 0.05, "y_offset": 40.0, "stroke": true, "shadow": true},
+        "kenburns": {"enable": false, "start_scale": 1.0, "end_scale": 1.15, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "none", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [],
+        "cinematic_fx": null
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "aggressive", "style_preset": "aggressive", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "竖向擦除快速揭示 + bouncy 回弹 + 强拍 flash/punch；节拍冲击由 impact_profile 自动生成。"
+}

@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "reason": "",
+  "model": {
+    "repo": "PekingU/rtdetr_r50vd",
+    "license": "apache-2.0",
+    "url": "https://huggingface.co/PekingU/rtdetr_r50vd",
+    "checkpoint_env": "P2V_RTDETR_CHECKPOINT",
+    "checkpoint": "d:/Danny/p2v/fixtures/models/rtdetr_r50vd"
+  },
+  "image": "D:\\Danny\\p2v\\fixtures\\images\\group_10people.jpg",
+  "image_size": [
+    1536,
+    1024
+  ],
+  "threshold": 0.25,
+  "reproduction": [
+    "python -m pip install \"transformers>=4.45\" torch Pillow huggingface_hub",
+    "python -c \"from huggingface_hub import snapshot_download; snapshot_download('PekingU/rtdetr_r50vd', local_dir='fixtures/models/rtdetr_r50vd')\"",
+    "PowerShell: $env:P2V_RTDETR_CHECKPOINT = 'd:/Danny/p2v/fixtures/models/rtdetr_r50vd'",
+    "Bash: export P2V_RTDETR_CHECKPOINT=fixtures/models/rtdetr_r50vd",
+    "python fixtures/verify_detection.py"
+  ],
+  "detection": {
+    "count": 11,
+    "person_count": 11,
+    "person_count_confidence_ge_0_8": 10,
+    "subjects": [
+      {
+        "index": 0,
+        "label": "person",
+        "bbox": [
+          0.16090023517608643,
+          0.1755599081516266,
+          0.3401600122451782,
+          0.997947096824646
+        ],
+        "confidence": 0.959362804889679
+      },
+      {
+        "index": 1,
+        "label": "person",
+        "bbox": [
+          0.4095589319864909,
+          0.14617928862571716,
+          0.6052964925765991,
+          0.9984405040740967
+        ],
+        "confidence": 0.958031952381134
+      },
+      {
+        "index": 2,
+        "label": "person",
+        "bbox": [
+          0.578307032585144,
+          0.1536058485507965,
+          0.7395170529683431,
+          0.9982337951660156
+        ],
+        "confidence": 0.9460144639015198
+      },
+      {
+        "index": 3,
+        "label": "person",
+        "bbox": [
+          0.0004948526620864868,
+          0.19821560382843018,
+          0.10234233736991882,
+          0.9964781999588013
+        ],
+        "confidence": 0.9457665681838989
+      },
+      {
+        "index": 4,
+        "label": "person",
+        "bbox": [
+          0.7065178553263346,
+          0.20732352137565613,
+          0.8406548500061035,
+          0.9985926151275635
+        ],
+        "confidence": 0.9412800669670105
+      },
+      {
+        "index": 5,
+        "label": "person",
+        "bbox": [
+          0.8190189202626547,
+          0.2061256468296051,
+          0.9602466424306234,
+          0.9982908964157104
+        ],
+        "confidence": 0.9373985528945923
+      },
+      {
+        "index": 6,
+        "label": "person",
+        "bbox": [
+          0.9026867548624674,
+          0.1425253450870514,
+          1.0,
+          0.9937915802001953
+        ],
+        "confidence": 0.9271848201751709
+      },
+      {
+        "index": 7,
+        "label": "person",
+        "bbox": [
+          0.06359978516896565,
+          0.16527077555656433,
+          0.20974735418955484,
+          0.9965691566467285
+        ],
+        "confidence": 0.9266053438186646
+      },
+      {
+        "index": 8,
+        "label": "person",
+        "bbox": [
+          0.3342454433441162,
+          0.19899356365203857,
+          0.4619230429331462,
+          0.995857834815979
+        ],
+        "confidence": 0.9137036204338074
+      },
+      {
+        "index": 9,
+        "label": "person",
+        "bbox": [
+          0.3001407782236735,
+          0.20405903458595276,
+          0.37551673253377277,
+          0.992313027381897
+        ],
+        "confidence": 0.8453967571258545
+      },
+      {
+        "index": 10,
+        "label": "person",
+        "bbox": [
+          0.30459070205688477,
+          0.2043573260307312,
+          0.3713087240854899,
+          0.4302355647087097
+        ],
+        "confidence": 0.2768389582633972
+      }
+    ],
+    "subjects_json": "D:\\Danny\\p2v\\fixtures\\reports\\rtdetr\\subjects.json"
+  },
+  "selected": {
+    "index": 1,
+    "label": "person",
+    "bbox": [
+      0.4095589319864909,
+      0.14617928862571716,
+      0.6052964925765991,
+      0.9984405040740967
+    ],
+    "confidence": 0.958031952381134,
+    "selection_reason": "confidence>=0.8、近似全身（高度>0.5）、框中心 x 最接近画面中心；crop 已人工核对为中央红夹克人物",
+    "crop_path": "D:\\Danny\\p2v\\fixtures\\reports\\selected_subject_crop.jpg"
+  },
+  "lock": {
+    "selector": {
+      "type": "index",
+      "query": null,
+      "image": null,
+      "value": 1
+    },
+    "fill": 0.62,
+    "fit": "contain",
+    "stage_size": [
+      1080,
+      1920
+    ],
+    "bbox": [
+      0.4095589319864909,
+      0.14617928862571716,
+      0.6052964925765991,
+      0.9984405040740967
+    ],
+    "subject_index": 1,
+    "focus": {
+      "scale": 0.7274764928424139,
+      "x": -15.562039911612144,
+      "y": -100.9991996053032,
+      "transformOrigin": "50% 50%",
+      "subjectCenter": [
+        561.3918113708496,
+        1098.8350009918213
+      ],
+      "fill": 0.62,
+      "fit": "contain",
+      "warnings": []
+    }
+  },
+  "acceptance": {
+    "center_tolerance": 0.05,
+    "projected_bbox": [
+      334.9519573023051,
+      364.79999999999995,
+      745.0480426976949,
+      1555.2
+    ],
+    "subject_center_after_push": [
+      540.0,
+      960.0
+    ],
+    "center_error_x_ratio": 0.0,
+    "center_error_y_ratio": 0.0,
+    "center_ok": true,
+    "contained": true,
+    "scale_ok": true,
+    "warnings": []
+  },
+  "push_in_variant": {
+    "bbox": [
+      0.4095589319864909,
+      0.14617928862571716,
+      0.6052964925765991,
+      0.529696835577488
+    ],
+    "scale": 1.1878149461915262,
+    "focus": {
+      "scale": 1.1878149461915262,
+      "x": -25.409513272405007,
+      "y": 369.59921672540037,
+      "transformOrigin": "50% 50%",
+      "subjectCenter": [
+        561.3918113708496,
+        648.841079235077
+      ],
+      "fill": 0.62,
+      "fit": "contain",
+      "warnings": []
+    },
+    "projected_bbox": [
+      205.20000000000002,
+      522.6740405798171,
+      874.8000000000001,
+      1397.325959420183
+    ],
+    "subject_center_after_push": [
+      540.0,
+      960.0
+    ],
+    "center_ok": true,
+    "contained": true,
+    "scale_gt_1": true,
+    "ok": true
+  },
+  "notes": [
+    "阈值 0.25 下检出 1 个低置信度重复碎框（0.277）；10 个 person 框置信度均 ≥0.845",
+    "全身 bbox 高约 0.85 画高，contain + fill=0.62 下 scale=0.727（拉远以完整入画），这是公式的正确行为；真正的推近见 push_in_variant",
+    "push_in_variant 用同一真实检测框的上半身子框（高度取 45%），scale>1 且仍 contain 不切头、居中误差 0",
+    "本实证为离线一次性分析；渲染循环内零推理（WAR_MAP 决策 #2）"
+  ]
+}

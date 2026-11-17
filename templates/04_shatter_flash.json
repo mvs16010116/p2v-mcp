@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "template_id": "04_shatter_flash",
+  "name": "碎裂闪入",
+  "summary": "6×6 碎裂炸现 + 模糊背景兜底 + 闪入过曝，强冲击转场预设。",
+  "effect_summary": "shatter=6×6/stagger0.018；backdrop=blur(24/0.5)；reveal=flash-in；style=aggressive。",
+  "use_cases": ["高能卡点", "潮牌/游戏风短片", "强调转场冲击"],
+  "maturity": "landed",
+  "maturity_note": "19.3 碎裂炸现已真进成片：6×6 碎片由确定性 LCG 生成偏移、错峰飞入就位后淡出交回 img；证据见 fixtures/e2e_shatter_render.py（入场 diff_early=48.27 → 稳态 diff_settle=8.83，非黑、双渲染对照）。 flashes/backdrop/grade 同时生效。",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 4,
+    "beat_interval_hint_sec": 2.0,
+    "rhythm_note": "强拍处触发碎裂与闪入；weak/变速鼓点先调 beat_group"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg"],
+    "texts": ["碎裂炸现 · 契约预设", "模糊背景兜底", "闪入过曝"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "inset-rounded", "duration": 0.32, "ease": "spring"},
+        "image_spring": {"stiffness": 300, "damping": 12, "mass": 1.0},
+        "text_anim": {"type": "spring-scale", "stiffness": 240, "damping": 18, "delay": 0.08, "y_offset": 60.0, "stroke": true, "shadow": false},
+        "kenburns": {"enable": false, "start_scale": 1.0, "end_scale": 1.15, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "none", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [],
+        "cinematic_fx": {
+          "mask": {"mode": "slats", "duration": 0.38, "seed_from": "clip.index"},
+          "shatter": {"enable": true, "cols": 6, "rows": 6, "stagger": 0.018},
+          "reveal": {"type": "flash-in", "blur_px": 14.0, "brightness": 2.4, "overshoot": 1.12, "duration": 0.22, "ghosts": 5},
+          "backdrop": {"type": "blur", "blur_px": 24.0, "brightness": 0.5},
+          "grade": {"preset": "film", "grain_png": null, "vignette": 0.2},
+          "light": {"sweep": false, "flare_at_beat": [], "flare_asset": null}
+        }
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "aggressive", "style_preset": "aggressive", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "6×6 碎片从四方错峰飞入拼合、就位后淡出交回完整图；backdrop 模糊底 + flash-in 过曝 + film 调色同时生效。像素证据见 fixtures/e2e_shatter_render.py。"
+}

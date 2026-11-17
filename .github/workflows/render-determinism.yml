@@ -1,0 +1,81 @@
+name: Render Determinism (Linux Docker)
+
+# 唯一剩余验收项（WAR_MAP）：同一 composition 同一 t，Linux Docker 渲染两次逐帧 SHA256 一致。
+# 本机 Windows 无 Docker，CI 配置待 GitHub 实跑验证；实跑报告由脚本产物上传为 artifact。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  determinism:
+    name: same-t two renders SHA256 (Docker)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install system dependencies (ffmpeg + 固定中文字体)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+          ffmpeg -version | head -n 1
+
+      - name: Install Python dependencies (pinned)
+        run: python -m pip install -r requirements.txt
+
+      - name: Install HyperFrames CLI (pinned 0.9.59, 全局避免渲染时取包)
+        run: |
+          npm install -g hyperframes@0.9.59
+          hyperframes --version
+
+      - name: Fetch vendored GSAP runtime (pinned 3.13.0)
+        run: |
+          npm pack gsap@3.13.0 >/dev/null
+          tar -xzf gsap-3.13.0.tgz
+          cp package/dist/gsap.min.js vendor/gsap.min.js
+          cp package/dist/CustomEase.min.js vendor/CustomEase.min.js
+          rm -rf package gsap-3.13.0.tgz
+          sha256sum vendor/gsap.min.js vendor/CustomEase.min.js
+
+      - name: Verify Docker daemon
+        run: docker info
+
+      - name: Run determinism regression (两次 Docker 渲染逐帧 SHA256)
+        id: determinism
+        run: python fixtures/verify_determinism.py
+
+      - name: Publish citable summary
+        if: always()
+        run: |
+          if [ -f fixtures/reports/determinism_report.md ]; then
+            cat fixtures/reports/determinism_report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload regression report (JSON + MD + logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: determinism-report
+          path: |
+            fixtures/reports/determinism_report.json
+            fixtures/reports/determinism_report.md
+            logs/
+          if-no-files-found: warn

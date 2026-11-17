@@ -1,0 +1,57 @@
+# beat-slideshow-mcp 配置骨架
+# 所有值的依据见 docs/节拍卡点图文视频MCP方案.md 对应章节。
+
+version: 1
+
+backend:
+  primary: hyperframes        # 首选：本地开源 CLI（Apache 2.0），方案 2.2
+  fallback: remotion          # 备选可插拔后端，方案 2.2 / 15
+  allow_fallback: false       # 默认不自动降级，后端切换是显式决策
+
+render:
+  timeout_sec: 600            # 方案 5.7 / 11
+  concurrency: 4              # 方案 5.7
+  default_width: 1080         # 竖屏 1080x1920，方案 1.1-R8
+  default_height: 1920
+  default_fps: 30
+  frame_align: true           # 18.3：beat 时间戳量化到帧
+
+preview:
+  host: 127.0.0.1
+  port: 0                     # 0 = 自动分配空闲端口，方案 5.6
+
+workspace:
+  root: workspace             # 方案 4 / CODING_STANDARDS 4
+  task_id: uuid4              # 每次调用生成 task_id = uuid4()
+  retain_hours: 24            # 方案 11-5：默认保留 24 小时便于排错
+  normalize_filenames: true   # CODING_STANDARDS 4：img_001.jpg
+
+logs:
+  dir: logs                   # 方案 11-3：stdout/stderr 落盘目录
+
+subprocess:
+  shell: false                # CODING_STANDARDS 3：禁止 shell=True
+  timeout_sec: 600
+  allowed_env:                # 白名单环境变量（safe_env）
+    - PATH
+    - HOME
+    - LANG
+    - LC_ALL
+    - TMPDIR
+    - SYSTEMROOT
+
+fx:
+  impact_profile: normal      # off/subtle/normal/aggressive，方案 18.2
+  style_preset: standard      # minimal/standard/cinematic/aggressive，方案 19.7
+  shatter_max_shards: 36      # 19.3：6x6 碎片上限
+  max_focus_scale: 4.0        # 20.4：推近上限，超过 4 倍原图会糊
+  webgl:
+    enabled: false            # 19.6：WebGL 增强层默认关闭（headless 可用性未核验，默认不进出片路径）
+    seed: 20261117            # 整数 seed：粒子 PRNG，禁未 seed 随机
+    particle_count: 220       # 真粒子数量（闭式解 p0+v0*t，无帧间累积）
+    godray_intensity: 0.18    # 体积光强度（t 的纯函数）
+    sharpen_strength: 0.0     # 锐化观感增强：默认 0（需 DOM 纹理采样对齐，未核验，暂关）
+
+vision:
+  enabled: false              # 20.1：视觉分析层为可选 Sidecar
+  on_missing: degrade         # 缺失时降级为手工锚点，不阻断出片

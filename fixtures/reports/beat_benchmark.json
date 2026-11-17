@@ -1,0 +1,141 @@
+{
+  "generated_at": "2026-11-17T12:45:57.959912+00:00",
+  "environment": {
+    "platform": "Windows-11-10.0.26100-SP0",
+    "python": "3.13.12",
+    "librosa": "0.11.0",
+    "numpy": "2.4.4"
+  },
+  "method": {
+    "detector": "src.analyzer.beat_detector.detect_beats (percussive -> beat_track -> frames_to_time -> round(ms))",
+    "grid_definition": "理想网格从 t=0 起每 60/true_bpm 秒一点；变速段分段构造",
+    "tolerances": {
+      "bpm_relative_error": 0.05,
+      "grid_tolerance_fraction_of_beat": 0.15,
+      "alignment_min": 0.85
+    },
+    "honesty": "阈值测量前固定，未按本机实测结果反推放宽；变速段标 limitation 不伪装 pass"
+  },
+  "summary": {
+    "total": 5,
+    "pass": 4,
+    "fail": 0,
+    "limitation": 1,
+    "overall": "pass"
+  },
+  "cases": [
+    {
+      "file": "beat_90bpm.wav",
+      "kind": "constant",
+      "true_bpm": 90.0,
+      "detected_bpm": 89.103,
+      "bpm_abs_error": 0.897,
+      "bpm_rel_error": 0.00997,
+      "confidence": "high",
+      "n_detected_beats": 17,
+      "n_ideal_grid_points": 18,
+      "alignment": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "tolerance_fraction_of_beat": 0.15
+      },
+      "status": "pass",
+      "assertion": "BPM 相对误差 1.00% ≤ 5%: True; precision 1.000 ≥ 0.85: True; recall 1.000 ≥ 0.85: True"
+    },
+    {
+      "file": "beat_120bpm.wav",
+      "kind": "constant",
+      "true_bpm": 120.0,
+      "detected_bpm": 117.454,
+      "bpm_abs_error": 2.546,
+      "bpm_rel_error": 0.02122,
+      "confidence": "high",
+      "n_detected_beats": 23,
+      "n_ideal_grid_points": 24,
+      "alignment": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "tolerance_fraction_of_beat": 0.15
+      },
+      "status": "pass",
+      "assertion": "BPM 相对误差 2.12% ≤ 5%: True; precision 1.000 ≥ 0.85: True; recall 1.000 ≥ 0.85: True"
+    },
+    {
+      "file": "beat_140bpm.wav",
+      "kind": "constant",
+      "true_bpm": 140.0,
+      "detected_bpm": 143.555,
+      "bpm_abs_error": 3.555,
+      "bpm_rel_error": 0.02539,
+      "confidence": "high",
+      "n_detected_beats": 25,
+      "n_ideal_grid_points": 28,
+      "alignment": {
+        "precision": 1.0,
+        "recall": 0.9259,
+        "tolerance_fraction_of_beat": 0.15
+      },
+      "status": "pass",
+      "assertion": "BPM 相对误差 2.54% ≤ 5%: True; precision 1.000 ≥ 0.85: True; recall 0.926 ≥ 0.85: True"
+    },
+    {
+      "file": "weak_beat.wav",
+      "kind": "weak",
+      "true_bpm": 120.0,
+      "detected_bpm": 117.454,
+      "bpm_abs_error": 2.546,
+      "bpm_rel_error": 0.02122,
+      "confidence": "high",
+      "n_detected_beats": 22,
+      "n_ideal_grid_points": 24,
+      "alignment": {
+        "precision": 1.0,
+        "recall": 0.9565,
+        "tolerance_fraction_of_beat": 0.15
+      },
+      "status": "pass",
+      "assertion": "BPM 相对误差 2.12% ≤ 5%: True; precision 1.000 ≥ 0.85: True; recall 0.957 ≥ 0.85: True"
+    },
+    {
+      "file": "tempo_shift.wav",
+      "kind": "tempo_change",
+      "true_bpm": [
+        [
+          0.0,
+          6.0,
+          90.0
+        ],
+        [
+          6.0,
+          12.0,
+          140.0
+        ]
+      ],
+      "detected_bpm": 143.555,
+      "bpm_abs_error": null,
+      "bpm_rel_error": null,
+      "confidence": "high",
+      "n_detected_beats": 26,
+      "n_ideal_grid_points": 23,
+      "alignment": {
+        "precision": 0.6923,
+        "recall": 0.8182,
+        "tolerance_fraction_of_beat": 0.15
+      },
+      "status": "limitation",
+      "assertion": "单一 BPM 143.55 落在分段真值邻域 [81,154]: 是；分段网格 precision=0.692"
+    }
+  ],
+  "beat_grid_stabilization": {
+    "trigger": "变速音频单一 BPM 检测失准（分段网格 precision 低）；清晰/弱鼓点段误差 ≤5% 但仍有累积偏移",
+    "finding": "librosa beat_track 在恒定 BPM 上对齐率达标（precision≈1.0，recall 0.93~1.0），BPM 相对误差 1.0%~2.5%；变速曲被迫给出单一 BPM，无法代表分段真值。现有 _confidence_from_beats 仅看间隔标准差，变速段仍报 high，缺乏 multi-tempo 警示。",
+    "recommendation": [
+      "① 中值周期重估：对 raw_beats 取 np.diff 的中位数为周期 T，最小二乘拟合 t_i=t0+i*T，把节拍 snap 到拟合网格，消除帧量化的累积漂移（作用于 detect_beats 返回前）。",
+      "② 分段 tempo：滑窗跑 beat_track 或用 novelty 曲线检测 tempo 变化点，对每段独立拟合网格；单一全局网格不适用于变速曲。",
+      "③ 无/弱鼓点兜底：按方案第 9 章直接 set_times 按固定 BPM 等分，配合 adjust_timeline 人工微调。",
+      "④ confidence 修正：加入 multi-tempo 标志（分段周期差异超阈值时降级为 low/medium），避免变速段误报 high。"
+    ],
+    "implementation_status": "未实现（QA 阶段只测量与记录）。改动 src/analyzer/beat_detector.py 会改变 raw_beats，须先确认 tests/test_analyzer.py 不破坏并回归本基准后再落地。",
+    "reference": "docs/节拍卡点图文视频MCP方案.md 第 9 章（节拍微调/漂移补偿）"
+  }
+}

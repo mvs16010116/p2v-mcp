@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "template_id": "09_shatter_burst",
+  "name": "碎裂爆发冲击",
+  "summary": "6×6 碎裂炸现叠加 shake 抖动与 flash 白闪，强拍高能冲击预设。",
+  "effect_summary": "shatter=6×6/stagger0.015 + backdrop=blur；beat_impacts=shake+flash；text=spring-scale。",
+  "use_cases": ["高能卡点", "游戏/潮牌开场", "强节奏混剪"],
+  "maturity": "landed",
+  "maturity_note": "shatter 与 shake 均有真进成片证据：fixtures/e2e_shatter_render.py（入场 48.27→稳态 8.83）、fixtures/e2e_fx_extended_render.py（shake d=16.9）。",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 4,
+    "beat_interval_hint_sec": 2.0,
+    "rhythm_note": "强拍触发碎裂飞入 + 画面抖动 + 白闪，三重冲击叠加"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg"],
+    "texts": ["碎裂爆发", "高能冲击", "节奏拉满"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "inset-rounded", "duration": 0.32, "ease": "spring"},
+        "image_spring": {"stiffness": 300, "damping": 12, "mass": 1.0},
+        "text_anim": {"type": "spring-scale", "stiffness": 240, "damping": 18, "delay": 0.06, "y_offset": 60.0, "stroke": true, "shadow": false},
+        "kenburns": {"enable": false, "start_scale": 1.0, "end_scale": 1.15, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "none", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [
+          {"t": 0.5, "frame": 15, "type": "shake", "intensity": 0.85, "duration": 0.3, "strong": true},
+          {"t": 0.5, "frame": 15, "type": "flash", "intensity": 0.6, "duration": 0.2, "strong": true}
+        ],
+        "cinematic_fx": {
+          "mask": {"mode": "slats", "duration": 0.36, "seed_from": "clip.index"},
+          "shatter": {"enable": true, "cols": 6, "rows": 6, "stagger": 0.015},
+          "reveal": {"type": "flash-in", "blur_px": 12.0, "brightness": 2.2, "overshoot": 1.1, "duration": 0.2, "ghosts": 4},
+          "backdrop": {"type": "blur", "blur_px": 24.0, "brightness": 0.5},
+          "grade": {"preset": "teal-orange", "grain_png": null, "vignette": 0.15},
+          "light": {"sweep": false, "flare_at_beat": [], "flare_asset": null}
+        }
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "aggressive", "style_preset": "aggressive", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "碎片从四方飞入拼合、就位后淡出露出完整图；强拍处画面抖动 + 白闪叠加，青橙调色。"
+}

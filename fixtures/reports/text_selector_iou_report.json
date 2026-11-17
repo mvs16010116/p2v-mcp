@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "reason": "",
+  "model": {
+    "repo": "IDEA-Research/grounding-dino-tiny",
+    "license": "apache-2.0",
+    "implementation": "transformers.GroundingDinoProcessor/ForObjectDetection（local_files_only）",
+    "box_threshold": 0.1,
+    "text_threshold": 0.1,
+    "checkpoint": "D:\\Danny\\p2v\\fixtures\\models\\grounding-dino-tiny"
+  },
+  "image": "D:\\Danny\\p2v\\fixtures\\images\\group_10people.jpg",
+  "image_size": [
+    1536,
+    1024
+  ],
+  "ground_truth": {
+    "source": "Wave 6 RT-DETR 实证 selected.bbox（中央红夹克，人工复核）",
+    "bbox": [
+      0.4095589319864909,
+      0.14617928862571716,
+      0.6052964925765991,
+      0.9984405040740967
+    ]
+  },
+  "iou_threshold": 0.5,
+  "trials": [
+    {
+      "query": "red",
+      "ok": true,
+      "bbox": [
+        0.40781859556833905,
+        0.1477569043636322,
+        0.6045270760854086,
+        0.9984965324401855
+      ],
+      "confidence": 0.13444127142429352,
+      "iou": 0.985415,
+      "pass_iou_ge_0_5": true
+    },
+    {
+      "query": "a person in red",
+      "ok": true,
+      "bbox": [
+        0.4080046017964681,
+        0.14725863933563232,
+        0.6048621336619059,
+        0.9972646236419678
+      ],
+      "confidence": 0.16677966713905334,
+      "iou": 0.987321,
+      "pass_iou_ge_0_5": true
+    },
+    {
+      "query": "red jacket",
+      "ok": true,
+      "bbox": [
+        0.19233677784601846,
+        0.5307635068893433,
+        0.31304532289505005,
+        0.580369234085083
+      ],
+      "confidence": 0.17286834120750427,
+      "iou": 0.0,
+      "pass_iou_ge_0_5": false
+    }
+  ],
+  "best": {
+    "query": "a person in red",
+    "ok": true,
+    "bbox": [
+      0.4080046017964681,
+      0.14725863933563232,
+      0.6048621336619059,
+      0.9972646236419678
+    ],
+    "confidence": 0.16677966713905334,
+    "iou": 0.987321,
+    "pass_iou_ge_0_5": true
+  },
+  "reproduction": [
+    "python -m pip install \"transformers>=4.45\" torch Pillow",
+    "hf download IDEA-Research/grounding-dino-tiny --local-dir ./fixtures/models/grounding-dino-tiny",
+    "PowerShell: $env:P2V_GROUNDING_DINO_CHECKPOINT = './fixtures/models/grounding-dino-tiny'",
+    "python fixtures/verify_text_selector.py"
+  ],
+  "notes": [
+    "text selector 由离线 Grounding DINO 出框；渲染循环零推理（决策 #2）",
+    "IoU 用 src.vision.focus_math.iou 纯函数计算，未 mock",
+    "grounding-dino-tiny 对属性词置信度偏低（实测 ~0.13），阈值取 0.1 以召回目标"
+  ]
+}

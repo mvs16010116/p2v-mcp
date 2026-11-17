@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "template_id": "05_film_noir",
+  "name": "黑白胶片颗粒",
+  "summary": "noir 调色 + 预渲染颗粒 + 暗角 + fade 揭示，复古黑白质感。",
+  "effect_summary": "grade=noir + grain_png=assets/grain.png + vignette=0.35；reveal=fade；mask=inset-rounded；style=cinematic。",
+  "use_cases": ["复古短片", "纪实风格", "情绪向图文"],
+  "maturity": "landed",
+  "maturity_note": "noir/film/teal-orange 调色与 grain 平铺均已实证；grain_png 是独立 overlay 素材，generate_composition 只拷镜头图，需按 README 把 fixtures/images/grain.png 放进工程 assets/（见 e2e_fx2_render.py）。",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 4,
+    "beat_interval_hint_sec": 2.0,
+    "rhythm_note": "慢切镜突出颗粒与暗角；grain 用静态 PNG 平铺，禁逐帧 feTurbulence"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg"],
+    "texts": ["黑白胶片 · noir", "颗粒呼吸", "暗角"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "inset-rounded", "duration": 0.32, "ease": "spring"},
+        "image_spring": {"stiffness": 160, "damping": 22, "mass": 1.0},
+        "text_anim": {"type": "fade-in", "stiffness": 220, "damping": 20, "delay": 0.12, "y_offset": 40.0, "stroke": false, "shadow": false},
+        "kenburns": {"enable": true, "start_scale": 1.0, "end_scale": 1.08, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "power1.inOut", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [],
+        "cinematic_fx": {
+          "mask": {"mode": "iris", "duration": 0.38, "seed_from": "clip.index"},
+          "shatter": {"cols": 6, "rows": 6, "stagger": 0.018},
+          "reveal": {"type": "fade", "blur_px": 0.0, "brightness": 1.0, "overshoot": 1.0, "duration": 0.3, "ghosts": 0},
+          "backdrop": {"type": "color", "blur_px": 0.0, "brightness": 1.0},
+          "grade": {"preset": "noir", "grain_png": "assets/grain.png", "vignette": 0.35},
+          "light": {"sweep": false, "flare_at_beat": [], "flare_asset": null}
+        }
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "subtle", "style_preset": "cinematic", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "稳态帧灰度化（noir）+ 原生分辨率零均值颗粒噪声 std>2 + 暗角；切点无纯黑闪。"
+}

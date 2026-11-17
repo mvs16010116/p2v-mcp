@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "template_id": "01_beat_basic",
+  "name": "基础节拍卡点",
+  "summary": "标准 spring 入场 + 圆形蒙版 + 轻微节拍冲击，通用入门预设。",
+  "effect_summary": "mask=circle / duration=0.32；image_spring=standard(240/17)；text=spring-up-fade；kenburns 关；无 cinematic_fx/focus。",
+  "use_cases": ["社媒快讯", "多图轮播卡点", "入门演示"],
+  "maturity": "landed",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 2,
+    "beat_interval_hint_sec": 1.0,
+    "rhythm_note": "120 BPM 下每 2 拍约 1.0s 换一镜，鼓点清晰；弱鼓点需先 adjust_timeline"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg"],
+    "texts": ["节拍卡点 · 基础预设", "鼓点对齐", "spring 入场"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "circle", "duration": 0.32, "ease": "spring"},
+        "image_spring": {"stiffness": 240, "damping": 17, "mass": 1.0},
+        "text_anim": {"type": "spring-up-fade", "stiffness": 220, "damping": 20, "delay": 0.08, "y_offset": 60.0, "stroke": false, "shadow": false},
+        "kenburns": {"enable": false, "start_scale": 1.0, "end_scale": 1.15, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "none", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [],
+        "cinematic_fx": null
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "normal", "style_preset": "standard", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "圆形蒙版随鼓点展开、图片带回弹入场、文字延迟上浮；冲击强度 normal。"
+}

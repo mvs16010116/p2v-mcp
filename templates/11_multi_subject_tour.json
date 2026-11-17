@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "template_id": "11_multi_subject_tour",
+  "name": "多主体漫游视差",
+  "summary": "群像中从主体 A 漫游到主体 B，前景聚焦全速、背景慢推雾化形成分层视差。",
+  "effect_summary": "focus tour(index1→index4) + parallax(bg_ratio0.35/haze0.2)；text=spring-up-fade。",
+  "use_cases": ["群像叙事", "主角接力", "人物对比"],
+  "maturity": "landed",
+  "maturity_note": "tour 两点漫游 + 分层视差真进成片证据见 fixtures/e2e_tour_parallax_render.py（镜头内 diff 19.08→32.20 单调推进、非黑）。bbox 取自 detection_report.json 真实 RT-DETR 检出。",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 4,
+    "beat_interval_hint_sec": 2.0,
+    "rhythm_note": "单镜内完成 A→B 漫游，背景慢推形成纵深；换镜时 tour 重新聚焦"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg"],
+    "texts": ["从主角到群像", "视差纵深", "焦点接力"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "circle", "duration": 0.32, "ease": "spring"},
+        "image_spring": {"stiffness": 160, "damping": 22, "mass": 1.0},
+        "text_anim": {"type": "spring-up-fade", "stiffness": 220, "damping": 20, "delay": 0.1, "y_offset": 60.0, "stroke": false, "shadow": false},
+        "kenburns": {"enable": false, "start_scale": 1.0, "end_scale": 1.15, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "none", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": {
+          "mode": "subject",
+          "selector": {"type": "index", "value": 1},
+          "subject_index": 1,
+          "bbox": [0.4096, 0.1462, 0.6053, 0.9984],
+          "fill": 0.62,
+          "fit": "contain",
+          "anchor_region": "upper_body",
+          "hold_ratio": 0.12,
+          "parallax": {"enable": true, "bg_ratio": 0.35, "haze": 0.2},
+          "tour_to": {"subject_index": 4, "bbox": [0.7065, 0.2073, 0.8407, 0.9986]}
+        },
+        "beat_impacts": [],
+        "cinematic_fx": null
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "normal", "style_preset": "standard", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "单镜内焦点从中央红夹克（index1）漫游到右侧人物（index4）；背景模糊慢推 + 雾化形成分层纵深，字幕稳定。"
+}

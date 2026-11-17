@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "template_id": "06_wipe_story",
+  "name": "横向擦除叙事",
+  "summary": "横向擦除蒙版 + 缓慢 Ken Burns 推进，适合按时间线讲故事的图文。",
+  "effect_summary": "mask=horizontal-wipe/0.4；kenburns=enable(1.0→1.12, power1.inOut)；text=spring-up-fade；impact=normal。",
+  "use_cases": ["时间线叙事", "步骤讲解", "横向连播"],
+  "maturity": "landed",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 2,
+    "beat_interval_hint_sec": 1.0,
+    "rhythm_note": "每 2 拍换镜；擦除方向与 Ken Burns 推进一致"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg", "fixtures/images/person_ref.jpg"],
+    "texts": ["第一章 · 群像", "第二章 · 主角", "横向擦除推进"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "horizontal-wipe", "duration": 0.4, "ease": "power2.out"},
+        "image_spring": {"stiffness": 240, "damping": 17, "mass": 1.0},
+        "text_anim": {"type": "spring-up-fade", "stiffness": 220, "damping": 20, "delay": 0.1, "y_offset": 60.0, "stroke": false, "shadow": false},
+        "kenburns": {"enable": true, "start_scale": 1.0, "end_scale": 1.12, "start_x": -4.0, "start_y": 0.0, "end_x": 4.0, "end_y": 0.0, "ease": "power1.inOut", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [],
+        "cinematic_fx": null
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "normal", "style_preset": "standard", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "横向擦除揭示 + 稳态缓慢横移拉近；Ken Burns 与入场 spring 分时段不抢 scale。"
+}

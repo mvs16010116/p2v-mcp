@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "template_id": "07_crossfade_dream",
+  "name": "交叉溶解梦境",
+  "summary": "相邻镜头 crossfade 交叉溶解 + 扫光 + 颗粒，画面柔和连贯。",
+  "effect_summary": "mask=iris/0.12；reveal=fade；grade=film+grain；light.sweep=true；impact=off（避免 flash 污染溶解像素）。",
+  "use_cases": ["情绪短片", "图片故事", "柔和转场"],
+  "maturity": "landed",
+  "maturity_note": "crossfade + 扫光 + 颗粒三项已在阶段 B（e2e_fx2_render.py）真进成片并有主/对照像素证据。crossfade 由相邻 clip 自动重叠实现，不需手动字段；grain_png 需随工程放进 assets/。",
+  "bgm_profile": {
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "expected_bpm_range": [115, 125],
+    "beat_group": 4,
+    "beat_interval_hint_sec": 2.0,
+    "rhythm_note": "至少两张不同图才能验证 crossfade；切点重叠窗口 0.12s"
+  },
+  "build_timeline": {
+    "images": ["fixtures/images/group_10people.jpg", "fixtures/images/person_ref.jpg"],
+    "texts": ["群像 · 溶解 A", "单人 · 溶解 B"],
+    "loop_assets": true,
+    "effects": [
+      {
+        "mask": {"type": "circle", "duration": 0.32, "ease": "spring"},
+        "image_spring": {"stiffness": 240, "damping": 17, "mass": 1.0},
+        "text_anim": {"type": "fade-in", "stiffness": 220, "damping": 20, "delay": 0.08, "y_offset": 40.0, "stroke": false, "shadow": false},
+        "kenburns": {"enable": false, "start_scale": 1.0, "end_scale": 1.15, "start_x": 0.0, "start_y": 0.0, "end_x": 0.0, "end_y": 0.0, "ease": "none", "pivot_x": "50%", "pivot_y": "50%"},
+        "focus": null,
+        "beat_impacts": [],
+        "cinematic_fx": {
+          "mask": {"mode": "iris", "duration": 0.12, "seed_from": "clip.index"},
+          "shatter": {"cols": 6, "rows": 6, "stagger": 0.018},
+          "reveal": {"type": "fade", "blur_px": 0.0, "brightness": 1.0, "overshoot": 1.0, "duration": 0.3, "ghosts": 0},
+          "backdrop": {"type": "blur", "blur_px": 24.0, "brightness": 0.5},
+          "grade": {"preset": "film", "grain_png": "assets/grain.png", "vignette": 0.1},
+          "light": {"sweep": true, "flare_at_beat": [], "flare_asset": null}
+        }
+      }
+    ]
+  },
+  "timeline_defaults": {"impact_profile": "off", "style_preset": "cinematic", "fps": 30},
+  "generate_composition": {
+    "backend": "hyperframes",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio_path": "fixtures/audio/bgm_120bpm.wav",
+    "font_family": "Noto Sans SC",
+    "output_dir": null
+  },
+  "render_video": {"concurrency": 4, "timeout_sec": 600},
+  "expected_visual": "切点中点帧是两张图的线性混合（alpha≈0.715、非纯黑），扫光时段局部亮带，稳态有零均值颗粒。"
+}
