@@ -55,12 +55,16 @@ def test_get_determinism_report_honest_skip() -> None:
     assert r["data"] is not None
 
 
-def test_diagnose_webgl_reports_default_off() -> None:
+def test_diagnose_webgl_reports_auto_mode() -> None:
     r = main.diagnose_webgl()
     assert r["ok"] is True
-    assert r["data"]["config"].get("enabled") is False
+    assert r["data"]["effective_mode"] == "auto"
+    assert r["data"]["config"].get("mode") == "auto"
     assert r["data"]["template_has_canvas"] is True
-    assert r["data"]["headless_context_controllable"] is False
+    assert r["data"]["template_has_mode_gate"] is True
+    assert r["data"]["template_has_observability"] is True
+    assert r["data"]["cli_gpu_flags_supported"] is True
+    assert r["data"]["cli_default_gpu_mode"] == "auto"
 
 
 def test_get_license_summary_reads_report() -> None:

@@ -267,6 +267,8 @@ class PipelineService:
         output_mp4: str,
         concurrency: int = 4,
         timeout_sec: int = 600,
+        gpu_mode: Literal["auto", "on", "off"] = "auto",
+        resolution: str | None = None,
     ) -> ToolResponse:
         return self.backend.render(
             project_dir,
@@ -275,6 +277,8 @@ class PipelineService:
             output_mp4,
             concurrency=concurrency,
             timeout_sec=timeout_sec,
+            gpu_mode=gpu_mode,
+            resolution=resolution,
         )
 
     # ------------------------------------------------------------------

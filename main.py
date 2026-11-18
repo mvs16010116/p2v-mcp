@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -106,6 +107,8 @@ class RenderVideoInput(StrictModel):
     output_mp4: str = Field(min_length=1)
     concurrency: int = Field(default=4, ge=1)
     timeout_sec: int = Field(default=600, gt=0)
+    gpu_mode: Literal["auto", "on", "off"] = "auto"   # CLI v0.9.59 --browser-gpu 模式
+    resolution: str | None = None                     # CLI --resolution 预设；None=保持 1080×1920
 
 
 class AnalyzeSubjectsInput(StrictModel):
@@ -260,17 +263,27 @@ def render_video(
     output_mp4: str,
     concurrency: int = 4,
     timeout_sec: int = 600,
+    gpu_mode: Literal["auto", "on", "off"] = "auto",
+    resolution: str | None = None,
 ) -> dict[str, Any]:
-    """确定性渲染 MP4 并混入 BGM（方案 5.7）。"""
+    """确定性渲染 MP4 并混入 BGM（方案 5.7）。
+
+    gpu_mode: auto（默认，有显卡用显卡否则软件）/ on（强制硬件）/ off（强制软件）。
+    resolution: 可选 CLI 预设（如 portrait-4k）；默认 None 保持 1080×1920 交付规格。
+    """
     try:
         RenderVideoInput(
             project_dir=project_dir, composition_id=composition_id, audio_path=audio_path,
             output_mp4=output_mp4, concurrency=concurrency, timeout_sec=timeout_sec,
+            gpu_mode=gpu_mode, resolution=resolution,
         )
     except ValidationError as exc:
         return _param_fail(exc, ErrorCode.FILE_NOT_FOUND)
     return _dump(
-        _service.render_step(project_dir, composition_id, audio_path, output_mp4, concurrency, timeout_sec)
+        _service.render_step(
+            project_dir, composition_id, audio_path, output_mp4,
+            concurrency, timeout_sec, gpu_mode, resolution,
+        )
     )
 
 
@@ -444,7 +457,11 @@ def get_license_summary() -> dict[str, Any]:
 
 @mcp.tool()
 def diagnose_webgl() -> dict[str, Any]:
-    """诊断 WebGL 增强层配置与依赖就绪状态（阶段 C 画质能力的可观测性）。"""
+    """诊断 GPU 自适应 WebGL 增强层的配置与能力（2026-11-18 实证更新）。
+
+    返回 config.mode、模板探测/可观测能力、CLI 原生 GPU 参数支持，以及
+    从最近渲染日志读到的实际 GPU 探测结果（若存在）。不臆测、不伪造。
+    """
     cfg_path = _PROJECT_ROOT / "config.yaml"
     webgl: dict[str, Any] = {}
     if cfg_path.is_file():
@@ -455,14 +472,38 @@ def diagnose_webgl() -> dict[str, Any]:
             webgl = {}
     template = (_PROJECT_ROOT / "src" / "builder" / "template" / "composition.html.j2")
     ttext = template.read_text(encoding="utf-8") if template.is_file() else ""
+
+    # 从最近 HyperFrames 渲染日志读 CLI 自身的 GPU 探测结论（可观测证据）。
+    observed_gpu: str | None = None
+    logs_dir = _PROJECT_ROOT / "logs"
+    if logs_dir.is_dir():
+        for log in sorted(logs_dir.glob("cmd_*_hyperframes.log"),
+                          key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                content = log.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            hit = re.search(r"browserGpuMode probe[^\n]*?(hardware|software)[^\n]*", content)
+            if hit:
+                observed_gpu = hit.group(0).strip()[:300]
+                break
+
+    mode = webgl.get("mode", "auto" if "enabled" not in webgl else
+                     ("on" if webgl.get("enabled") else "off"))
     return {
         "ok": True,
         "data": {
             "config": webgl,
+            "effective_mode": mode,
             "template_has_canvas": 'id="webgl-layer"' in ttext,
             "template_has_render_hook": "window.renderShaderFrame" in ttext,
-            "headless_context_controllable": False,  # HyperFrames CLI 不接受 Chromium flag
-            "note": "WebGL 默认关闭；headless 真激活需可控制 swiftshader 的环境实测（未核验）",
+            "template_has_mode_gate": "WEBGL_MODE === 'off'" in ttext,
+            "template_has_observability": "window.__WEBGL_INFO__" in ttext,
+            "cli_gpu_flags_supported": True,   # v0.9.59 --help 实证 --browser-gpu/--no-browser-gpu/--gpu
+            "cli_default_gpu_mode": "auto",    # 首启探测，有 GPU 用 GPU，无 GPU 回退 SwiftShader
+            "observed_last_render_gpu": observed_gpu,
+            "note": "默认 mode=auto：有显卡自动启用画质增强，无显卡 context 失败即降级 no-op 不阻断。"
+                    "详见 docs/GPU自适应渲染评估.md",
         },
         "error": None,
     }

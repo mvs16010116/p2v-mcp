@@ -17,6 +17,7 @@ import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Literal
 
 from src.backend.base import RenderBackend
 from src.builder.project_generator import build_project_bundle, render_composition_html
@@ -296,6 +297,55 @@ class HyperFramesBackend(RenderBackend):
             self._preview_server.server_close()
             self._preview_server = None
 
+    # 白名单：CLI v0.9.59 render --help 实证支持的分辨率预设（--resolution）。
+    # 默认 None = 不改分辨率（composition 自身 1080×1920，业界短视频原生交付规格）。
+    _RESOLUTION_PRESETS = frozenset({
+        "landscape", "portrait", "landscape-4k", "portrait-4k", "square", "square-4k",
+        "landscape-1440p", "portrait-1440p", "square-1440p",
+        "1080p", "4k", "uhd", "1440p", "qhd",
+        "1080p-square", "square-1080p", "4k-square", "square-4k",
+        "4k-portrait", "portrait-4k", "1440p-square", "square-1440p",
+    })
+    _GPU_MODES = frozenset({"auto", "on", "off"})
+
+    def _build_render_command(
+        self,
+        *,
+        silent: Path,
+        use_docker: bool,
+        gpu_mode: str,
+        resolution: str | None,
+    ) -> list[str] | ToolResponse:
+        """纯函数式构造 CLI args（无副作用，便于单元测试）。
+
+        只拼接 CLI v0.9.59 --help 实证支持的 flag，非法参数返回失败响应，
+        绝不把用户输入拼成臆造 flag。
+        """
+        if gpu_mode not in self._GPU_MODES:
+            return _fail(ErrorCode.BROWSER_LAUNCH_FAILED,
+                         f"gpu_mode 参数非法: {gpu_mode!r}，仅允许 auto/on/off")
+        if resolution is not None and resolution not in self._RESOLUTION_PRESETS:
+            return _fail(ErrorCode.BROWSER_LAUNCH_FAILED,
+                         f"resolution 参数非法: {resolution!r}，仅允许 CLI v0.9.59 支持的预设")
+        if use_docker and gpu_mode == "on":
+            return _fail(ErrorCode.BROWSER_LAUNCH_FAILED,
+                         "gpu_mode=on 与 docker 渲染冲突（容器内无主机 GPU）；"
+                         "改用 gpu_mode=auto 或本地渲染")
+
+        args = [*self.cli_command, "render"]
+        if use_docker:
+            args.append("--docker")
+        # auto 不传 flag，交给 CLI 首启探测（有 GPU 用 GPU，无 GPU 回退 SwiftShader）。
+        if gpu_mode == "on":
+            args.append("--browser-gpu")
+        elif gpu_mode == "off":
+            args.append("--no-browser-gpu")
+        # 默认 None 不改分辨率（1080×1920 交付规格）；按需显式升 4K/1440p。
+        if resolution is not None:
+            args.extend(["--resolution", resolution])
+        args.extend(["--output", str(silent)])
+        return args
+
     def render(
         self,
         project_dir: str,
@@ -306,11 +356,19 @@ class HyperFramesBackend(RenderBackend):
         concurrency: int = 4,
         timeout_sec: int = 600,
         docker: bool | None = None,
+        gpu_mode: Literal["auto", "on", "off"] = "auto",
+        resolution: str | None = None,
     ) -> ToolResponse:
         """CLI 确定性渲染 → ffmpeg 精确混音 → 三项产物校验。
 
         concurrency 仅记录：HyperFrames CLI 自行管理 worker 数，未公开 --concurrency
         参数，禁止臆造 flag（worker 数按 21.1 C3 不得改变像素）。
+
+        gpu_mode（CLI v0.9.59 实证支持，见 render --help）：
+          - auto（默认）：CLI 首启探测，有 GPU 用 GPU、无 GPU 自动回退 SwiftShader；
+          - on：追加 --browser-gpu 强制硬件；off：追加 --no-browser-gpu 强制软件。
+        resolution（可选）：CLI --resolution 白名单预设，如 portrait-4k；默认 None
+          = 保持 composition 的 1080×1920（业界短视频平台原生交付规格，默认不开 4K）。
         """
         path = Path(project_dir).resolve()
         config_path = path / "render_config.json"
@@ -338,10 +396,12 @@ class HyperFramesBackend(RenderBackend):
         silent = path / "render_silent.mp4"
 
         use_docker = self.use_docker if docker is None else docker
-        args = [*self.cli_command, "render"]
-        if use_docker:
-            args.append("--docker")
-        args.extend(["--output", str(silent)])
+        cmd = self._build_render_command(
+            silent=silent, use_docker=use_docker, gpu_mode=gpu_mode, resolution=resolution
+        )
+        if isinstance(cmd, ToolResponse):
+            return cmd  # 参数校验失败
+        args = cmd
 
         try:
             cli_result = run_command(

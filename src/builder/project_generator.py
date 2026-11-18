@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
@@ -99,13 +100,18 @@ class CinematicRenderCtx(StrictModel):
 
 
 class WebGLRenderCtx(StrictModel):
-    """阶段 C WebGL 增强层的模板参数（决策 #8）；enabled=false 时整层 no-op（向后兼容）。
+    """GPU 自适应 WebGL 增强层的模板参数（决策 #8 + 2026-11-18 GPU 自适应评估）。
 
-    本轮只启用真粒子 + 体积光（纯 t 闭式解、零 DOM 采样）；sharpen 保留字段但默认 0
-    （需 DOM 纹理采样对齐，headless 未核验，暂关）。跨层仍走 Pydantic，禁止裸 dict。
+    mode（权威）：
+      - off：整层 no-op（最保守，旧 enabled=false 等价）；
+      - on：强制尝试启用，失败才降级（旧 enabled=true 等价）；
+      - auto（默认）：模板探测 WebGL context + 编译成功即启用，否则降级 no-op。
+    enabled 为向后兼容字段：由 mode 派生（mode=off → false，其余 → true）。
+    只启用真粒子 + 体积光（纯 t 闭式解、零 DOM 采样）；sharpen 保留但默认 0。
     """
 
-    enabled: bool = False
+    mode: Literal["auto", "on", "off"] = "auto"
+    enabled: bool = True          # 由 mode 派生：off→False，auto/on→True
     seed: int = 20261117
     particle_count: int = 220
     godray_intensity: float = 0.18
@@ -411,8 +417,18 @@ def build_project_bundle(
     ]
     impacts = _merge_impacts(timeline)
     wc = _fx_webgl_config()
+    # mode 兼容归一化：新 config 用 mode；旧 config 只有 enabled → on/off；都没有 → auto。
+    raw_mode = wc.get("mode")
+    raw_enabled = wc.get("enabled")
+    if raw_mode in ("auto", "on", "off"):
+        webgl_mode: Literal["auto", "on", "off"] = raw_mode  # type: ignore[assignment]
+    elif isinstance(raw_enabled, bool):
+        webgl_mode = "on" if raw_enabled else "off"
+    else:
+        webgl_mode = "auto"   # 默认：GPU 自适应探测（有显卡充分利用，无显卡安全降级）
     webgl_ctx = WebGLRenderCtx(
-        enabled=bool(wc.get("enabled", False)),
+        mode=webgl_mode,
+        enabled=(webgl_mode != "off"),
         seed=int(wc.get("seed", 20261117)),
         particle_count=int(wc.get("particle_count", 220)),
         godray_intensity=float(wc.get("godray_intensity", 0.18)),

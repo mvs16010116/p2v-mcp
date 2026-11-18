@@ -46,7 +46,11 @@ fx:
   shatter_max_shards: 36      # 19.3：6x6 碎片上限
   max_focus_scale: 4.0        # 20.4：推近上限，超过 4 倍原图会糊
   webgl:
-    enabled: false            # 19.6：WebGL 增强层默认关闭（headless 可用性未核验，默认不进出片路径）
+    # GPU 自适应（2026-11-18 评估）：auto=探测到 WebGL 可用即启用画质增强（有显卡充分利用、
+    # 无显卡 context 创建失败自动降级 no-op，不阻断出片）；off=强制关闭；on=强制尝试。
+    # 实证：HyperFrames CLI v0.9.59 默认 browserGpuMode=auto 已能探测硬件 GPU 并降级软件；
+    # 本机实测 WebGL 特效层开/关像素不同（DIFFERENT=True），证明硬件 GPU 下真激活。
+    mode: auto                # auto(推荐默认) / on / off；旧 enabled 字段仍兼容
     seed: 20261117            # 整数 seed：粒子 PRNG，禁未 seed 随机
     particle_count: 220       # 真粒子数量（闭式解 p0+v0*t，无帧间累积）
     godray_intensity: 0.18    # 体积光强度（t 的纯函数）

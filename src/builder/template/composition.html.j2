@@ -171,10 +171,16 @@ const IMPACT_PROFILE = {{ impact_profile | tojson }};
 /* 18.3 crossfade 与 19.5 光效/颗粒：全部来自 timeline_json，缺配置时保持旧行为。 */
 const XFADE = TIMELINE.crossfade || { enable: false, duration: 0.12 };
 const FX_OV = TIMELINE.fx_overlay || { sweep: false, sweep_duration: 0.55, grain_image: '' };
-/* 阶段 C WebGL：默认关闭；缺配置时 canvas 隐藏 + no-op，绝不阻断出片。 */
-const WEBGL = TIMELINE.webgl || { enabled: false, seed: 20261117, particle_count: 220,
-                                  godray_intensity: 0.18, sharpen_strength: 0.0 };
+/* GPU 自适应 WebGL：mode=auto(默认，探测到可用即启用)/on(强制)/off(关闭)。
+   兼容旧 enabled 字段（build 阶段已归一化为 mode + enabled）。 */
+const WEBGL = TIMELINE.webgl || { mode: 'auto', enabled: true, seed: 20261117,
+                                  particle_count: 220, godray_intensity: 0.18, sharpen_strength: 0.0 };
+const WEBGL_MODE = (WEBGL.mode === 'on' || WEBGL.mode === 'off' || WEBGL.mode === 'auto')
+  ? WEBGL.mode : 'auto';
 const MASTER = gsap.timeline({ paused: true });
+
+/* 可观测：安装后写入 {enabled, mode, renderer, reason}，供 diagnose_webgl 读取。 */
+window.__WEBGL_INFO__ = { enabled: false, mode: WEBGL_MODE, renderer: null, reason: 'not-installed' };
 
 /* 默认空实现：任何调用路径都安全；探测成功后 installWebGL() 才覆盖 renderShaderFrame。 */
 window.renderShaderFrame = function () {};
@@ -608,19 +614,31 @@ function mulberry32(seed) {
 }
 
 function installWebGL() {
-  if (!WEBGL.enabled) return;   /* 全局默认关闭：保持 no-op，canvas 隐藏 */
   const canvas = document.getElementById('webgl-layer');
-  if (!canvas) return;
-  function degrade() {
+  if (WEBGL_MODE === 'off' || !WEBGL.enabled || !canvas) {
+    window.__WEBGL_INFO__.reason = WEBGL_MODE === 'off' ? 'mode_off' : 'no_canvas_or_disabled';
+    if (canvas) canvas.style.display = 'none';
+    return;   /* 明确关闭：no-op，canvas 隐藏 */
+  }
+  function degrade(reason) {
     canvas.style.display = 'none';   /* 失败不留半透明黑层（首帧非黑是硬红线） */
+    window.__WEBGL_INFO__.reason = reason;  /* auto 静默降级 / on 记录失败，均不阻断 */
     /* window.renderShaderFrame 保持默认空函数；shaderReady 默认 resolve。 */
   }
   let gl = null;
   try {
     gl = canvas.getContext('webgl', { alpha: true, antialias: false, preserveDrawingBuffer: true })
       || canvas.getContext('experimental-webgl', { alpha: true, antialias: false, preserveDrawingBuffer: true });
-  } catch (e) { degrade(); return; }
-  if (!gl) { degrade(); return; }   /* 探测失败：隐藏 + no-op，不阻断 */
+  } catch (e) { degrade('context_threw'); return; }
+  if (!gl) { degrade('no_webgl_context'); return; }   /* 探测失败：隐藏 + no-op，不阻断（无显卡路径） */
+
+  /* 记录实际 renderer：区分硬件 GPU / SwiftShader 软件渲染（可观测，不臆测）。 */
+  try {
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    window.__WEBGL_INFO__.renderer = dbg
+      ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+      : gl.getParameter(gl.RENDERER);
+  } catch (e) { window.__WEBGL_INFO__.renderer = 'unknown'; }
 
   const VS_PARTICLE = [
     'attribute vec4 aP0V0;',           // x0,y0,vx,vy（NDC）
@@ -687,7 +705,7 @@ function installWebGL() {
 
   const progP = program(VS_PARTICLE, FS_PARTICLE);
   const progR = program(VS_RAY_FINAL, FS_RAY_FINAL);
-  if (!progP || !progR) { degrade(); return; }   /* 任一编译失败 → 降级 */
+  if (!progP || !progR) { degrade('shader_compile_failed'); return; }   /* 任一编译失败 → 降级 */
 
   /* 粒子静态参数：整数 seed + mulberry32，初始化一次性生成，渲染期零随机。 */
   const rnd = mulberry32(WEBGL.seed | 0);
@@ -745,6 +763,8 @@ function installWebGL() {
     gl.drawArrays(gl.POINTS, 0, count);
   };
   shaderReady = function () { return Promise.resolve(); };   /* 编译同步完成 */
+  window.__WEBGL_INFO__.enabled = true;   /* 真激活：renderShaderFrame 已被覆盖 */
+  window.__WEBGL_INFO__.reason = 'active';
 }
 
 /* ---------------------------------------------------------------------------

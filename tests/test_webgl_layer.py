@@ -83,15 +83,17 @@ def test_install_webgl_called_after_tweens() -> None:
     """installWebGL 在所有 tween 建好后（buildFxOverlays 末尾）调用。"""
     t = _template_text()
     assert "installWebGL();   /* tween 全部建好后再装 WebGL" in t
-    assert "if (!WEBGL.enabled) return;" in t
+    assert "WEBGL_MODE === 'off'" in t
+    assert "window.__WEBGL_INFO__" in t
 
 
-def test_project_generator_webgl_default_off_and_injection() -> None:
-    """默认 config 中 enabled=false；timeline_json.webgl 字段存在且关闭。"""
+def test_project_generator_webgl_default_auto_and_injection() -> None:
+    """默认 config 中 mode=auto（GPU 自适应）；timeline_json.webgl 注入 mode+enabled。"""
     ctx = _bundle().context
-    assert ctx.webgl.enabled is False
+    assert ctx.webgl.mode == "auto"
+    assert ctx.webgl.enabled is True      # auto/on 派生 enabled=true，由模板探测决定真启用
     assert ctx.webgl.sharpen_strength == 0.0
-    assert '"webgl":{"enabled":false' in ctx.timeline_json
+    assert '"webgl":{"mode":"auto","enabled":true' in ctx.timeline_json
 
 
 def test_project_generator_webgl_enabled_injection(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -102,18 +104,20 @@ def test_project_generator_webgl_enabled_injection(monkeypatch) -> None:  # type
                  "godray_intensity": 0.3, "sharpen_strength": 0.0},
     )
     ctx = _bundle().context
+    assert ctx.webgl.mode == "on"         # 旧 enabled:True 兼容映射为 mode=on
     assert ctx.webgl.enabled is True
     assert ctx.webgl.seed == 42
     assert ctx.webgl.particle_count == 128
-    assert '"webgl":{"enabled":true' in ctx.timeline_json
+    assert '"webgl":{"mode":"on","enabled":true' in ctx.timeline_json
 
 
-def test_rendered_html_webgl_default_noop() -> None:
-    """默认渲染出的 HTML 携带 no-op 占位与关闭配置。"""
+def test_rendered_html_webgl_default_auto() -> None:
+    """默认渲染出的 HTML 携带 no-op 占位与 mode=auto 配置（探测失败时保持 no-op）。"""
     html = render_composition_html(_bundle().context, TEMPLATE)
     assert "window.renderShaderFrame = function () {};" in html
-    assert '"webgl":{"enabled":false' in html
+    assert '"webgl":{"mode":"auto","enabled":true' in html
     assert 'id="webgl-layer"' in html
+    assert "window.__WEBGL_INFO__" in html
 
 
 def test_webgl_ctx_is_strict_model() -> None:
